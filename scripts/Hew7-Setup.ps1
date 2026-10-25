@@ -5,7 +5,8 @@ address (Settings > Network and Internet > your network).
   powershell -ExecutionPolicy Bypass -File Hew7-Setup.ps1 -TvIp YOUR-TV-IP
 
 What it does (everything can be undone with Hew7-Undo.ps1):
-  1. Installs Hew7.apk (from this folder) if it isn't installed yet. -Reinstall installs it again.
+  1. Installs Hew7 from the APK in this folder (the newest Hew7.Launcher-<version>.apk, or
+     Hew7.apk) if it isn't installed yet. -Reinstall installs it again; -Apk picks a file.
   2. Gives Hew7 the permissions only ADB can give: memory and usage access (Running Apps),
      the screensaver timer, and location (Wi-Fi name).
   3. Makes Hew7 the screensaver.
@@ -23,7 +24,11 @@ param(
     [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"
-if (-not $Apk) { $Apk = Join-Path $PSScriptRoot "Hew7.apk" }
+if (-not $Apk) {
+    # The release download (Hew7.Launcher-1.0.1.apk...), newest first; Hew7.apk also works.
+    $found = Get-ChildItem $PSScriptRoot -Filter "Hew7.Launcher-*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $Apk = if ($found) { $found.FullName } else { Join-Path $PSScriptRoot "Hew7.apk" }
+}
 . (Join-Path $PSScriptRoot "Hew7-Common.ps1")
 
 $script:DryRun = $DryRun
@@ -54,7 +59,7 @@ if (-not (Test-Path $BackupFile)) {
 # 2. Install.
 $installed = (& $script:Adb -s $script:Target shell pm list packages $Hew7) -match [regex]::Escape($Hew7)
 if (-not $installed -or $Reinstall) {
-    if (-not (Test-Path $Apk)) { throw "Hew7.apk wasn't found at $Apk" }
+    if (-not (Test-Path $Apk)) { throw "No Hew7 APK found. Put Hew7.Launcher-<version>.apk from the GitHub release in $PSScriptRoot." }
     Step "Installing Hew7"
     if (-not $DryRun) { & $script:Adb -s $script:Target install -r $Apk | Write-Host }
     if ($installed) { Write-Host "  Note: reinstalling stops Hew7 Helper; switch it off and on again afterwards." }

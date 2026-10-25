@@ -41,7 +41,7 @@ ads, no tracking.
 You need a computer with [ADB](https://developer.android.com/tools/releases/platform-tools) and
 **USB debugging** turned on in the TV's Developer options.
 
-1. Download the APK from [Releases](../../releases) and save it as `scripts\Hew7.apk`.
+1. Download `Hew7.Launcher-<version>.apk` from [Releases](../../releases) into the `scripts` folder.
 2. Run this, replacing YOUR-TV-IP with your TV's IP address (Settings › Network and Internet):
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\Hew7-Setup.ps1 -TvIp YOUR-TV-IP

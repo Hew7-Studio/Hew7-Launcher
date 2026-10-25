@@ -7,7 +7,7 @@ Before you start (on the TV):
   Note the TV's IP address (Settings > Network and Internet > your network).
 
 On the computer:
-  Keep Hew7.apk in this folder.
+  Put the APK from the GitHub release (Hew7.Launcher-<version>.apk) in this folder.
   If adb isn't installed, download Google's "SDK Platform-Tools for Windows" and unzip it here,
   so there is a "platform-tools" folder next to these scripts.
 

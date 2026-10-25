@@ -1,5 +1,15 @@
 # Hew7 changelog
 
+## 1.0.1 — 26 October 2026
+
+**Hew7 Helper status everywhere it's needed:** Running Apps, Quick Settings, Power, Remote Buttons
+and Screensaver (Sleep After) now say clearly when Hew7 Helper is off or has stopped (Android stops
+it whenever Hew7 is updated), with a **Restart Hew7 Helper** / **Turn On Hew7 Helper** button and
+step-by-step instructions. Features that need it explain what to do when tapped; Restart no longer
+sends you to the TV's System settings.
+
+**Setup script** finds the release download (`Hew7.Launcher-<version>.apk`) by itself.
+
 ## 1.0.0 — 25 October 2026 (first stable release)
 
 **Home screen:** clock, date, weather and greeting with readable "ink" on any wallpaper; app dock

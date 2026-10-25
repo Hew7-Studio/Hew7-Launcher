@@ -274,6 +274,7 @@ private fun Context.openSettingsEntry(vararg labels: String) {
     if (helper != null && CloseHelperService.isEnabled(this)) {
         helper.openSettingsEntry(labels.toList())
     } else {
+        explainHelper()
         openSetting(component("com.android.tv.settings", "com.android.tv.settings.MainSettings"))
     }
 }
@@ -414,9 +415,7 @@ private fun RunningAppsPage(vm: HomeViewModel, fresh: List<RunningApp>?, alpha: 
     val c = LocalLauncherColors.current
     val context = LocalContext.current
     val first = remember { FocusRequester() }
-    val helperSwitchedOn = remember { CloseHelperService.isEnabled(context) }
-    // Android can leave the helper switched on but not running (it isn't restarted after Hew7 updates).
-    val helperOn = helperSwitchedOn && CloseHelperService.instance != null
+    val helperOn = rememberHelperState() == HelperState.RUNNING
     val justClosed by vm.justClosed.collectAsStateWithLifecycle()
     // Right after closing, show the list as it was so the closed rows can play away.
     val before = remember { vm.runningBeforeClose.takeIf { justClosed.isNotEmpty() } }
@@ -436,10 +435,11 @@ private fun RunningAppsPage(vm: HomeViewModel, fresh: List<RunningApp>?, alpha: 
         if (helperOn && helper != null) {
             vm.runningBeforeClose = running
             helper.close(pkgs)
-        } else if (pkgs.size == 1) {
-            context.startFirst(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${pkgs[0]}")))
         } else {
-            Toast.makeText(context, "Turn on Hew7 Helper to close all apps at once", Toast.LENGTH_LONG).show()
+            // Without the helper, say what to do; for one app, its App Info page still lets you
+            // press Force Stop yourself.
+            context.explainHelper()
+            if (pkgs.size == 1) context.startFirst(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${pkgs[0]}")))
         }
     }
 
@@ -451,6 +451,7 @@ private fun RunningAppsPage(vm: HomeViewModel, fresh: List<RunningApp>?, alpha: 
         bladeStart = { Blade(Icons.Rounded.ChevronLeft, "Machine Room", alpha, onEnter = onBack) },
     ) {
         Anchor(first)
+        HelperNotice("Closing apps and Close All Apps")
         when {
             running == null -> {
                 Text(
@@ -485,29 +486,6 @@ private fun RunningAppsPage(vm: HomeViewModel, fresh: List<RunningApp>?, alpha: 
                 MenuItem(Icons.Rounded.RocketLaunch, "Close All Apps", { close(running.map { it.app.pkg }) })
             }
         }
-        if (!helperOn) {
-            Spacer(Modifier.height(8.dp))
-            var consent by remember { mutableStateOf(false) }
-            MenuItem(
-                Icons.Rounded.Accessibility,
-                if (helperSwitchedOn) "Restart Hew7 Helper" else "Turn On Hew7 Helper",
-                {
-                    // Switching it back on after an update needs no new consent; the first time does.
-                    if (helperSwitchedOn) context.openAccessibilitySettings() else consent = true
-                },
-            )
-            if (consent) HelperConsentDialog(onAgree = { consent = false; context.openAccessibilitySettings() }, onDecline = { consent = false })
-            Text(
-                if (helperSwitchedOn) {
-                    "Hew7 Helper is switched on but has stopped (this happens after Hew7 updates). In Settings › Accessibility › Hew7 Helper, switch it off and on again."
-                } else {
-                    "Settings › Accessibility › Hew7 Helper. It lets Hew7 press Force Stop for you."
-                },
-                color = c.subtext,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(start = 8.dp, top = 2.dp),
-            )
-        }
     }
 }
 
@@ -515,6 +493,66 @@ private fun Context.openAccessibilitySettings() = openSetting(
     component("com.android.tv.settings", "com.android.tv.settings.oemlink.AccessibilitySettingsActivity"),
     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
 )
+
+// ---------- Hew7 Helper status, shown wherever a feature needs it ----------
+
+/** Running; switched on but stopped (Android stops it whenever Hew7 is updated); or switched off. */
+private enum class HelperState { RUNNING, STOPPED, OFF }
+
+private fun helperState(context: Context) = when {
+    !CloseHelperService.isEnabled(context) -> HelperState.OFF
+    CloseHelperService.instance == null -> HelperState.STOPPED
+    else -> HelperState.RUNNING
+}
+
+/** Checked again whenever the panel comes back into focus, e.g. after a visit to Accessibility. */
+@Composable
+private fun rememberHelperState(): HelperState {
+    val context = LocalContext.current
+    val focused = LocalWindowInfo.current.isWindowFocused
+    return remember(focused) { helperState(context) }
+}
+
+/** For a tap on a feature that needs the helper while it isn't running. */
+private fun Context.explainHelper() {
+    val text = when (helperState(this)) {
+        HelperState.STOPPED -> "Hew7 Helper has stopped. Choose Restart Hew7 Helper on this page, then switch it off and on."
+        else -> "This needs Hew7 Helper. Choose Turn On Hew7 Helper on this page."
+    }
+    Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+}
+
+/**
+ * When the helper isn't running: a button to fix it and step-by-step instructions, naming the
+ * features on this page that need it. Shows nothing while the helper is running.
+ */
+@Composable
+private fun HelperNotice(needs: String) {
+    val context = LocalContext.current
+    val c = LocalLauncherColors.current
+    val state = rememberHelperState()
+    if (state == HelperState.RUNNING) return
+    var consent by remember { mutableStateOf(false) }
+    MenuItem(
+        Icons.Rounded.Accessibility,
+        if (state == HelperState.STOPPED) "Restart Hew7 Helper" else "Turn On Hew7 Helper",
+        // Switching it back on after an update needs no new consent; the first time does.
+        { if (state == HelperState.STOPPED) context.openAccessibilitySettings() else consent = true },
+    )
+    Text(
+        if (state == HelperState.STOPPED) {
+            "Hew7 Helper has stopped (this happens whenever Hew7 is updated). $needs need it.\n" +
+                "To fix: choose Restart Hew7 Helper above, then in Accessibility select Hew7 Helper and switch it Off, then On again."
+        } else {
+            "$needs need Hew7 Helper, which is off.\n" +
+                "To turn it on: choose Turn On Hew7 Helper above and Agree, then in Accessibility select Hew7 Helper and switch it On."
+        },
+        color = c.subtext,
+        fontSize = 11.sp,
+        modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 10.dp),
+    )
+    if (consent) HelperConsentDialog(onAgree = { consent = false; context.openAccessibilitySettings() }, onDecline = { consent = false })
+}
 
 /**
  * Says plainly what Hew7 Helper does before sending you to switch it on (Google Play asks apps
@@ -672,7 +710,7 @@ fun SettingsPanel(vm: HomeViewModel, alpha: Float, startOnQuick: Boolean = false
     var button by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf(false) }
     var remoteVersion by remember { mutableStateOf(0) }
-    val helperOn = remember { CloseHelperService.isEnabled(context) && CloseHelperService.instance != null }
+    val helperOn = rememberHelperState() == HelperState.RUNNING
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
     }
@@ -822,15 +860,12 @@ fun SettingsPanel(vm: HomeViewModel, alpha: Float, startOnQuick: Boolean = false
                     )
                 }
                 Text(
-                    if (helperOn) {
-                        "Buttons work on Hew7's home screen; in other apps they keep their usual job."
-                    } else {
-                        "Buttons work on Hew7's home screen. Turn on Hew7 Helper so Settings, Input and Menu buttons the TV keeps for itself can be used too."
-                    },
+                    "Buttons work on Hew7's home screen; in other apps they keep their usual job.",
                     color = c.subtext,
                     fontSize = 11.sp,
-                    modifier = Modifier.padding(start = 8.dp, top = 8.dp),
+                    modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 6.dp),
                 )
+                HelperNotice("The Settings, Input and Menu buttons (which the TV keeps for itself) and app buttons inside other apps")
             }
             Page.REMOTE_BUTTON -> {
                 remoteVersion
@@ -850,14 +885,15 @@ fun SettingsPanel(vm: HomeViewModel, alpha: Float, startOnQuick: Boolean = false
             }
             Page.POWER -> {
                 val c = LocalLauncherColors.current
-                val helper = CloseHelperService.instance.takeIf { CloseHelperService.isEnabled(context) }
+                // Restart and Shut Down need the Hew7 Helper running.
+                val helper = CloseHelperService.instance.takeIf { helperOn }
+                HelperNotice("Restart and Shut Down")
                 MenuItem(Icons.Rounded.RestartAlt, "Restart", {
                     if (helper != null) {
                         onClose()
                         helper.restart()
                     } else {
-                        // Without the helper: the TV's System page, where Restart is at the bottom.
-                        context.openSetting(component("com.android.tv.settings", "com.android.tv.settings.device.SystemActivity"))
+                        context.explainHelper()
                     }
                 })
                 MenuItem(Icons.Rounded.PowerSettingsNew, "Shut Down", {
@@ -865,16 +901,17 @@ fun SettingsPanel(vm: HomeViewModel, alpha: Float, startOnQuick: Boolean = false
                         onClose()
                         helper.shutDown()
                     } else {
-                        Toast.makeText(context, "Turn on Hew7 Helper to shut down from here", Toast.LENGTH_LONG).show()
+                        context.explainHelper()
                     }
                 })
-                Text(
-                    if (helper != null) "Restart starts the TV again. Shut Down turns it off completely; switch it on with the remote's power button."
-                    else "Hew7 Helper is off: Restart opens the TV's System settings, and Shut Down needs the Helper.",
-                    color = c.subtext,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(start = 8.dp, top = 8.dp),
-                )
+                if (helper != null) {
+                    Text(
+                        "Restart starts the TV again. Shut Down turns it off completely; switch it on with the remote's power button.",
+                        color = c.subtext,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 8.dp, top = 8.dp),
+                    )
+                }
             }
             Page.REMOTE_APP -> {
                 val current = choiceFor(button)
@@ -889,28 +926,10 @@ fun SettingsPanel(vm: HomeViewModel, alpha: Float, startOnQuick: Boolean = false
                     )
                 }
             }
-            Page.QUICK -> TileGrid(
-                listOf(
-                    // The TV's own Display and Sound page, which has no direct link (see openSettingsEntry).
-                    TileSpec(Icons.Rounded.Tv, "Display and Sound", wide = true) {
-                        context.openSettingsEntry("Display and sound", "Display & sound", "Display and Sound")
-                    },
-                    TileSpec(Icons.Rounded.Wifi, "Network", network) { context.openSetting(Intent(Settings.ACTION_WIFI_SETTINGS)) },
-                    TileSpec(Icons.Rounded.Bluetooth, "Bluetooth and Remotes") {
-                        context.openSetting(
-                            component("com.android.tv.settings", "com.tcl.android.tv.settings.accessories.AccessoriesActivity"),
-                            Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
-                        )
-                    },
-                    TileSpec(Icons.Rounded.Accessibility, "Accessibility") {
-                        context.openSetting(
-                            component("com.android.tv.settings", "com.android.tv.settings.oemlink.AccessibilitySettingsActivity"),
-                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
-                        )
-                    },
-                    TileSpec(Icons.Rounded.Apps, "Apps") { context.openSetting(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)) },
-                ),
-            )
+            Page.QUICK -> {
+                HelperNotice("Display and Sound, Accounts and Power (Restart, Shut Down)")
+                QuickTiles(context, network)
+            }
             Page.THEME -> Options(ThemeMode.entries, theme, { it.label }) { vm.setThemeMode(it) }
             Page.FONT -> LauncherFont.entries.forEach { f ->
                 MenuItem(
@@ -961,14 +980,42 @@ fun SettingsPanel(vm: HomeViewModel, alpha: Float, startOnQuick: Boolean = false
                 }
                 Text(
                     "Calm: the picture holds still and dims, and the clock updates once a minute. " +
-                        "Sleep: the TV goes to standby" + (if (helperOn) "." else " (works best with Hew7 Helper on)."),
+                        "Sleep: the TV goes to standby.",
                     color = LocalLauncherColors.current.subtext,
                     fontSize = 11.sp,
-                    modifier = Modifier.padding(start = 8.dp, top = 6.dp),
+                    modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
                 )
+                HelperNotice("Sleep After")
             }
         }
     }
+}
+
+/** Quick Settings' tiles: the TV's own settings pages. */
+@Composable
+private fun QuickTiles(context: Context, network: String) {
+    TileGrid(
+        listOf(
+            // The TV's own Display and Sound page, which has no direct link (see openSettingsEntry).
+            TileSpec(Icons.Rounded.Tv, "Display and Sound", wide = true) {
+                context.openSettingsEntry("Display and sound", "Display & sound", "Display and Sound")
+            },
+            TileSpec(Icons.Rounded.Wifi, "Network", network) { context.openSetting(Intent(Settings.ACTION_WIFI_SETTINGS)) },
+            TileSpec(Icons.Rounded.Bluetooth, "Bluetooth and Remotes") {
+                context.openSetting(
+                    component("com.android.tv.settings", "com.tcl.android.tv.settings.accessories.AccessoriesActivity"),
+                    Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+                )
+            },
+            TileSpec(Icons.Rounded.Accessibility, "Accessibility") {
+                context.openSetting(
+                    component("com.android.tv.settings", "com.android.tv.settings.oemlink.AccessibilitySettingsActivity"),
+                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+                )
+            },
+            TileSpec(Icons.Rounded.Apps, "Apps") { context.openSetting(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)) },
+        ),
+    )
 }
 
 /**
