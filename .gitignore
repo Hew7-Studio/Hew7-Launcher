@@ -1,0 +1,22 @@
+# Build output
+build/
+app/build/
+.gradle/
+.kotlin/
+.idea/
+local.properties
+*.iml
+
+# Signing secrets: never commit
+keystore.properties
+*.jks
+*.keystore
+
+# Private release workspace (signed builds, store submission notes) and old design captures
+/release/
+/screenshots/
+
+# Per-TV files the setup scripts create, and tools/APKs placed next to them
+scripts/hew7-tv-backup-*.json
+scripts/*.apk
+scripts/platform-tools/

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hew7</string>
+    <string name="dream_name">Hew7 Weather</string>
+    <string name="helper_name">Hew7 Helper</string>
+    <string name="helper_description">Hew7 Helper lets the Hew7 home screen do things only the TV\'s own system can: close apps from Running Apps (by pressing Force Stop for you), open Display and Sound and Accounts directly, restart or shut down the TV from Quick Settings, and make your remote\'s buttons (Settings, Input, Menu, Netflix and other app buttons) work with Hew7.\n\nIt acts only when you ask it to. It reads only the TV settings screens and the TV\'s power menu while doing these jobs, and the names of remote buttons as you press them. It doesn\'t read what\'s on screen in other apps, and it doesn\'t collect, store or send any of this anywhere.</string>
+    <string name="copyright">© 2026 Hew7 Studio. Open source under the Apache License 2.0. Hew7, Hew7 Launcher, Hew7 Studio and the Hew7 logo are trademarks of Hew7 Studio.</string>
+</resources>

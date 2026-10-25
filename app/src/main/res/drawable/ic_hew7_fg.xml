@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hew7 logo: a seven-band rainbow rising over a horizon line. Drawn inside the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:strokeColor="#FFFF4D4D" android:strokeWidth="2.6" android:pathData="M26,62 A28,28 0 0,1 82,62" />
+    <path android:strokeColor="#FFFF9F43" android:strokeWidth="2.6" android:pathData="M29.5,62 A24.5,24.5 0 0,1 78.5,62" />
+    <path android:strokeColor="#FFFECA57" android:strokeWidth="2.6" android:pathData="M33,62 A21,21 0 0,1 75,62" />
+    <path android:strokeColor="#FF1DD1A1" android:strokeWidth="2.6" android:pathData="M36.5,62 A17.5,17.5 0 0,1 71.5,62" />
+    <path android:strokeColor="#FF48DBFB" android:strokeWidth="2.6" android:pathData="M40,62 A14,14 0 0,1 68,62" />
+    <path android:strokeColor="#FF54A0FF" android:strokeWidth="2.6" android:pathData="M43.5,62 A10.5,10.5 0 0,1 64.5,62" />
+    <path android:strokeColor="#FFA55EEA" android:strokeWidth="2.6" android:pathData="M47,62 A7,7 0 0,1 61,62" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M23,63.5 h62 a1.5,1.5 0 0,1 0,3 h-62 a1.5,1.5 0 0,1 0,-3 z" />
+</vector>

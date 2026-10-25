@@ -1,0 +1,36 @@
+Hew7 - third-party notices
+==========================
+
+Hew7 includes or uses the following. Each remains the property of its owners and is used under
+the license shown.
+
+SOFTWARE LIBRARIES (Apache License 2.0 - https://www.apache.org/licenses/LICENSE-2.0)
+  - AndroidX: Core, Activity, Lifecycle, Compose UI, Foundation, Animation, Material Icons,
+    TV Material - Copyright The Android Open Source Project
+  - Kotlin standard library and kotlinx.coroutines - Copyright JetBrains s.r.o. and contributors
+  - Coil - Copyright Coil Contributors
+  - OkHttp and Okio - Copyright Square, Inc.
+
+FONTS (SIL Open Font License 1.1 - https://openfontlicense.org)
+  - DM Sans - Copyright The DM Sans Project Authors
+  - Inter - Copyright The Inter Project Authors
+  - Lexend - Copyright The Lexend Project Authors
+  - Manrope - Copyright The Manrope Project Authors
+  - Nunito - Copyright The Nunito Project Authors
+  - Outfit - Copyright The Outfit Project Authors
+  - Poppins - Copyright Indian Type Foundry
+  - Quicksand - Copyright The Quicksand Project Authors
+  The fonts are bundled unmodified and are not sold on their own.
+
+ONLINE SERVICES (used at run time; no code from them is included)
+  - Weather data by Open-Meteo.com, licensed under CC BY 4.0
+    (https://open-meteo.com/en/license). Free for non-commercial use.
+  - Approximate location from the TV's internet address: ipwho.is and ipapi.co.
+  - Wallpapers: Bing daily images (Microsoft; each image is the property of its photographer /
+    licensor and is shown as-is with its original credit), and Lorem Picsum (photos from
+    Unsplash, under the Unsplash License).
+
+TRADEMARKS
+  Android, Android TV and Google TV are trademarks of Google LLC. Netflix, YouTube, Prime Video,
+  Disney+, TCL and other names and logos shown belong to their owners. Hew7 is not affiliated
+  with, sponsored or endorsed by any of them.
