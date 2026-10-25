@@ -1,0 +1,41 @@
+# Re-publishes a release as the github-actions bot, keeping its APK and notes, so the release
+# isn't credited to the personal account that first uploaded it.
+# Runs when this file changes, or by hand from the Actions tab (Run workflow).
+name: Republish release
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/republish-release.yml]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to re-publish
+        required: true
+        default: v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.inputs.tag || 'v1.0.0' }}
+    steps:
+      - name: Copy the release's files and details
+        run: |
+          mkdir assets
+          gh release download "$TAG" --dir assets
+          gh release view "$TAG" --json name --jq .name > title.txt
+          gh release view "$TAG" --json body --jq .body > notes.md
+          ls -l assets
+          sha256sum assets/*
+
+      - name: Publish it again as github-actions (the tag stays)
+        run: |
+          gh release delete "$TAG" --yes
+          gh release create "$TAG" assets/* --verify-tag --latest --title "$(cat title.txt)" --notes-file notes.md
+          gh release view "$TAG" --json author,assets --jq '{author: .author.login, assets: [.assets[].name]}'
