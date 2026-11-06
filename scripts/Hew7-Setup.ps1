@@ -24,6 +24,9 @@ param(
     [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"
+Write-Host "Hew7 is provided 'as is', without warranty, and you use it at your own risk: this script"
+Write-Host "changes your TV's settings over ADB (see Disclaimer in README.md and the Apache License 2.0)."
+Write-Host ""
 if (-not $Apk) {
     # The release download (Hew7.Launcher-1.0.1.apk...), newest first; Hew7.apk also works.
     $found = Get-ChildItem $PSScriptRoot -Filter "Hew7.Launcher-*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -95,3 +98,4 @@ Tv "am start -a android.settings.ACCESSIBILITY_SETTINGS" | Out-Null
 Write-Host ""
 Write-Host "Done. On the TV, select 'Hew7 Helper' and switch it on."
 Write-Host "To undo everything later: powershell -ExecutionPolicy Bypass -File Hew7-Undo.ps1 -TvIp $TvIp"
+Write-Host "For safety, turn USB debugging off in the TV's Developer options when you're done."

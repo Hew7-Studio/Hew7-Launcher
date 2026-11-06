@@ -65,6 +65,9 @@ To go back to the TV's own home screen, and optionally remove Hew7:
 powershell -ExecutionPolicy Bypass -File scripts\Hew7-Undo.ps1 -TvIp YOUR-TV-IP -Uninstall
 ```
 
+When you're done, turn **USB debugging** off again in the TV's Developer options: while it's on,
+any device you approve on the TV can control it (see [SECURITY.md](SECURITY.md)).
+
 Add `-DryRun` to either script to see what it would do. More in [`scripts/How to use.txt`](scripts/How%20to%20use.txt).
 
 ## Hew7 Helper (optional)
@@ -115,6 +118,19 @@ back to standard Android ones on other TVs.
 Hew7 keeps your settings on the TV. For the weather it looks up your approximate location from
 your internet address and asks Open-Meteo for the forecast; wallpapers come from Bing or Picsum.
 Nothing else leaves the TV. Full policy: [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+
+## Disclaimer
+
+**Use Hew7 at your own risk.** Hew7 is free software provided "as is", without warranty of any
+kind. Setting it up changes your TV's settings over ADB (Android Debug Bridge), and Hew7 Helper
+presses buttons on the TV's own settings screens for you. You are responsible for your TV, your
+network and the devices you allow to connect to them, including turning ADB off when you're done.
+To the extent the law allows, Hew7 Studio isn't liable for any damage or loss arising from using
+Hew7, including data loss, a TV that needs resetting, or security incidents such as unauthorised
+access to your TV or network. The binding terms are sections 7 (Disclaimer of Warranty) and 8
+(Limitation of Liability) of the [Apache License 2.0](LICENSE).
+
+Found a security problem? Report it privately; see [SECURITY.md](SECURITY.md).
 
 ## License and trademarks
 
