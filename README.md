@@ -12,8 +12,10 @@ ads, no tracking.
 
 | | |
 |---|---|
-| ![App dock](docs/screenshots/02-dock.jpg) | ![Hew7 Settings](docs/screenshots/03-hew7-settings.jpg) |
-| ![Quick Settings](docs/screenshots/04-quick-settings.jpg) | ![Screensaver](docs/screenshots/08-screensaver.jpg) |
+| ![App dock and Spotlight](docs/screenshots/02-dock.jpg) | ![Weather for the next hours](docs/screenshots/05-weather.jpg) |
+| ![Settings](docs/screenshots/03-settings.jpg) | ![Machine Room](docs/screenshots/04-machine-room.jpg) |
+
+![Screensaver](docs/screenshots/06-screensaver.jpg)
 
 ## Features
 
