@@ -22,8 +22,11 @@ import dev.hew7.launcher.data.Wallpaper
 import dev.hew7.launcher.data.WallpaperRepository
 import dev.hew7.launcher.data.WallpaperSource
 import dev.hew7.launcher.data.WeatherRepository
+import dev.hew7.launcher.data.NowPlaying
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -92,6 +95,18 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     /** The Running Apps list as it was before closing, so the closed rows can animate out. */
     var runningBeforeClose: List<dev.hew7.launcher.data.RunningApp>? = null
 
+    /** What each app is playing or last played (Now playing; empty without Notification access). */
+    val media = NowPlaying.media
+
+    /** When each app was last used, for apps with nothing in [media]. */
+    val lastUsed = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    private fun refreshNowPlaying() {
+        val ctx = getApplication<Application>()
+        NowPlaying.start(ctx)
+        viewModelScope.launch { lastUsed.value = withContext(Dispatchers.IO) { NowPlaying.lastUsed(ctx) } }
+    }
+
     val weatherEffects = MutableStateFlow(prefs.weatherEffects)
 
     /** The TV's screensaver delay in ms (Settings.System.SCREEN_OFF_TIMEOUT). */
@@ -113,7 +128,19 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private var wallpaperJob: Job? = null
 
     init {
+        // Hew7 2.0: banner tiles floating over the wallpaper, once; both can be changed back in Settings.
+        if (!prefs.v2Look) {
+            setTileStyle(TileStyle.BANNERS)
+            setDockAlpha(0f)
+            prefs.v2Look = true
+        }
+        // Hew7 2.0's text font is Inter (the clock and headlines are always Outfit); once, changeable in Settings.
+        if (!prefs.v2Font) {
+            setFont(LauncherFont.INTER)
+            prefs.v2Font = true
+        }
         refreshApps()
+        refreshNowPlaying()
         viewModelScope.launch {
             while (true) {
                 now.value = LocalDateTime.now()
@@ -137,6 +164,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         screensaverDelay.value = readScreensaverDelay()
         prefs.lastSeen.takeIf { it > 0 }?.let { greetings.onReturn(System.currentTimeMillis() - it, LocalDateTime.now()) }
         refreshApps()
+        refreshNowPlaying()
         val w = weather.value
         if (w == null || System.currentTimeMillis() - w.fetchedAt > 30 * 60 * 1000L) {
             viewModelScope.launch { weatherRepo.refresh()?.let { weather.value = it } }
@@ -171,6 +199,13 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshApps() {
         viewModelScope.launch {
             val loaded = appRepo.load()
+            // Hew7 TV goes to the front of the dock the first time it's seen (it can be moved after).
+            if (!prefs.hew7TvPlaced && loaded.any { it.pkg == AppRepository.HEW7_TV }) {
+                prefs.appOrder.takeIf { it.isNotEmpty() }?.let { order ->
+                    prefs.appOrder = listOf(AppRepository.HEW7_TV) + order.filter { it != AppRepository.HEW7_TV }
+                }
+                prefs.hew7TvPlaced = true
+            }
             playStore.value = loaded.firstOrNull { it.pkg == AppRepository.PLAY_STORE }
             apps.value = AppRepository.ordered(loaded.filter { it.pkg != AppRepository.PLAY_STORE }, prefs.appOrder)
         }

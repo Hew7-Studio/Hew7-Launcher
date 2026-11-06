@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -88,6 +89,10 @@ internal fun MenuItem(
     value: String? = null,
     textStyle: TextStyle = LocalTextStyle.current,
 ) {
+    if (LocalCellRow.current) {
+        PillCell(icon, text, value, onClick, modifier = modifier, titleStyle = textStyle)
+        return
+    }
     val c = LocalLauncherColors.current
     var focused by remember { mutableStateOf(false) }
     Surface(
@@ -116,6 +121,80 @@ internal fun MenuItem(
             )
             if (value != null) Text(value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
         }
+    }
+}
+
+/** True inside a panel page laid out as a row of pill cells (see SidePanel). */
+internal val LocalCellRow = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+internal val CellWidth = 96.dp
+internal val CellHeight = 90.dp
+internal val CellMaxWidth = 160.dp
+
+/**
+ * One slot of a panel laid out like the open weather pill: an icon over a short label and a
+ * value, the way the pill shows each hour. Selected, it gets a soft white wash and a white edge.
+ */
+@Composable
+internal fun PillCell(
+    icon: ImageVector?,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    titleStyle: TextStyle = LocalTextStyle.current,
+) {
+    val c = LocalLauncherColors.current
+    var focused by remember { mutableStateOf(false) }
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+    Surface(
+        onClick = onClick,
+        onLongClick = onLongClick,
+        modifier = modifier.widthIn(min = CellWidth, max = CellMaxWidth).height(CellHeight).onFocusChanged { focused = it.isFocused },
+        shape = ClickableSurfaceDefaults.shape(shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            contentColor = c.text,
+            focusedContainerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.16f),
+            focusedContentColor = c.text,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            focusedBorder = androidx.tv.material3.Border(
+                androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f)),
+                shape = shape,
+            ),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+    ) {
+        PillCellContent(icon, title, subtitle, focused, titleStyle)
+    }
+}
+
+/** The inside of a pill cell; also used for cells that only show a figure (Machine Room). */
+@Composable
+internal fun PillCellContent(
+    icon: ImageVector?,
+    title: String,
+    subtitle: String?,
+    focused: Boolean,
+    titleStyle: TextStyle = LocalTextStyle.current,
+    extra: (@Composable () -> Unit)? = null,
+) {
+    val c = LocalLauncherColors.current
+    // As wide as its text needs (so values aren't cut short), within limits.
+    androidx.compose.foundation.layout.Column(
+        Modifier.widthIn(min = CellWidth, max = CellMaxWidth).height(CellHeight).padding(horizontal = 10.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp, Alignment.CenterVertically),
+    ) {
+        if (icon != null) Icon(icon, contentDescription = null, tint = c.text, modifier = Modifier.size(18.dp))
+        else androidx.compose.foundation.layout.Spacer(Modifier.size(18.dp))
+        FittedText(title, focused, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, style = titleStyle.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center))
+        if (!subtitle.isNullOrBlank()) {
+            FittedText(subtitle, focused, fontSize = 10.sp, style = LocalTextStyle.current.copy(color = c.subtext, textAlign = androidx.compose.ui.text.style.TextAlign.Center))
+        }
+        extra?.invoke()
     }
 }
 

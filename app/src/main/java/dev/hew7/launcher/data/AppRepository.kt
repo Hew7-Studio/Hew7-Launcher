@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,8 @@ data class AppEntry(
     val isSystem: Boolean,
     /** Default position group: lower comes first (see AppRepository.rankOf). */
     val rank: Int,
+    /** The app's main colour (from its banner or icon), for the home screen's glow; ARGB. */
+    val accent: Int = 0xFF5B6B8C.toInt(),
 )
 
 class AppRepository(private val context: Context) {
@@ -41,14 +44,16 @@ class AppRepository(private val context: Context) {
                 val ai = ri.activityInfo
                 val pkg = ai.packageName
                 if (pkg == context.packageName || pkg in seen) continue
-                val banner = ai.loadBanner(pm) ?: ai.applicationInfo.loadBanner(pm)
+                val banner = (ai.loadBanner(pm) ?: ai.applicationInfo.loadBanner(pm))?.render(bannerW, bannerW * 9 / 16)
+                val icon = ri.loadIcon(pm).toSquareIcon(iconPx)
                 seen[pkg] = AppEntry(
                     pkg = pkg,
                     label = ri.loadLabel(pm).toString(),
-                    banner = banner?.render(bannerW, bannerW * 9 / 16),
-                    icon = ri.loadIcon(pm).toSquareIcon(iconPx),
+                    banner = banner,
+                    icon = icon,
                     isSystem = ai.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                     rank = rankOf(pkg, ai.applicationInfo),
+                    accent = accentOf(banner ?: icon),
                 )
             }
         }
@@ -60,6 +65,26 @@ class AppRepository(private val context: Context) {
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     private fun Drawable.render(w: Int, h: Int): ImageBitmap = toBitmap(w, h).asImageBitmap()
+
+    /**
+     * The picture's main colour: the average of its most colourful pixels, so a red logo on black
+     * gives red, not grey. Falls back to a calm blue-grey for black-and-white artwork.
+     */
+    private fun accentOf(img: ImageBitmap): Int {
+        val bmp = img.asAndroidBitmap().let { if (it.config == Bitmap.Config.HARDWARE) it.copy(Bitmap.Config.ARGB_8888, false) else it }
+        val step = (maxOf(bmp.width, bmp.height) / 32).coerceAtLeast(1)
+        var r = 0L; var g = 0L; var b = 0L; var n = 0L
+        val hsv = FloatArray(3)
+        for (y in 0 until bmp.height step step) for (x in 0 until bmp.width step step) {
+            val p = bmp.getPixel(x, y)
+            if (Color.alpha(p) < 128) continue
+            Color.colorToHSV(p, hsv)
+            if (hsv[1] < 0.35f || hsv[2] < 0.25f) continue
+            r += Color.red(p); g += Color.green(p); b += Color.blue(p); n++
+        }
+        if (n < 4) return 0xFF5B6B8C.toInt()
+        return Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+    }
 
     /**
      * Renders an icon as a full-bleed square so the UI can clip it to a rounded square.
@@ -87,8 +112,12 @@ class AppRepository(private val context: Context) {
     companion object {
         const val PLAY_STORE = "com.android.vending"
 
+        /** Hew7 Studio's TV app: the first app in the dock when it's installed. */
+        const val HEW7_TV = "dev.hew7.tv"
+
         /** Always first, in this order. */
         private val FEATURED = listOf(
+            HEW7_TV,
             "com.netflix.ninja",
             "com.amazon.amazonvideo.livingroom",
             "com.google.android.youtube.tv",

@@ -67,7 +67,20 @@ data class WallpaperInk(val leftDark: Boolean, val rightDark: Boolean) {
             }
         }
 
-        private const val BRIGHT = 0.58f
+        /**
+         * Average brightness (0–1) of each region of the wallpaper, given as fractions of the screen
+         * (x0, y0, x1, y1); null if the picture isn't available.
+         */
+        suspend fun brightness(context: Context, url: String?, vararg regions: FloatArray): List<Float>? {
+            if (url == null) return null
+            val bmp = withContext(Dispatchers.IO) {
+                val request = ImageRequest.Builder(context).data(url).size(Size(192, 108)).allowHardware(false).build()
+                (SingletonImageLoader.get(context).execute(request) as? SuccessResult)?.image?.toBitmap()
+            } ?: return null
+            return withContext(Dispatchers.Default) { regions.map { r -> luminance(bmp, r[0], r[1], r[2], r[3]) } }
+        }
+
+        const val BRIGHT = 0.58f
 
         /**
          * Average brightness (0–1) of a part of the screen, given as fractions of the screen. The
@@ -116,37 +129,33 @@ fun InkText(
     fontSize: TextUnit = TextUnit.Unspecified,
     fontWeight: FontWeight? = null,
     lineHeight: TextUnit = TextUnit.Unspecified,
+    fontFamily: androidx.compose.ui.text.font.FontFamily? = null,
+    letterSpacing: TextUnit = TextUnit.Unspecified,
 ) {
     val halo = if (darkInk) Color.White else Color.Black
     val strokePx = with(LocalDensity.current) {
         val size = if (fontSize == TextUnit.Unspecified) LocalTextStyle.current.fontSize else fontSize
         (size.toPx() * 0.12f).coerceIn(2f, 6f)
     }
-    val base = LocalTextStyle.current.merge(TextStyle(fontSize = fontSize, fontWeight = fontWeight, lineHeight = lineHeight))
+    val base = LocalTextStyle.current.merge(
+        TextStyle(fontSize = fontSize, fontWeight = fontWeight, lineHeight = lineHeight, fontFamily = fontFamily, letterSpacing = letterSpacing),
+    )
     Box(modifier) {
-        // Halo: a wide, faint outline under a narrower, stronger one gives a soft edge without blur.
+        // A barely-there edge (so thin strokes hold up on busy photos) under the text, which casts
+        // a soft, low shadow. The scrim behind the text does most of the work, so this stays gentle.
         Text(
             text,
             maxLines = 1,
             style = base.copy(
-                color = halo.copy(alpha = 0.22f),
-                drawStyle = Stroke(width = strokePx * 1.9f, join = StrokeJoin.Round),
+                color = halo.copy(alpha = if (darkInk) 0.16f else 0.12f),
+                drawStyle = Stroke(width = strokePx * 1.3f, join = StrokeJoin.Round),
                 shadow = null,
             ),
         )
         Text(
             text,
             maxLines = 1,
-            style = base.copy(
-                color = halo.copy(alpha = if (darkInk) 0.6f else 0.5f),
-                drawStyle = Stroke(width = strokePx, join = StrokeJoin.Round),
-                shadow = null,
-            ),
-        )
-        Text(
-            text,
-            maxLines = 1,
-            style = base.copy(color = color, shadow = Shadow(halo.copy(alpha = 0.4f), Offset(0f, 1f), blurRadius = 2f)),
+            style = base.copy(color = color, shadow = Shadow(halo.copy(alpha = if (darkInk) 0.4f else 0.45f), Offset(0f, strokePx * 0.6f), blurRadius = strokePx * 3f)),
         )
     }
 }

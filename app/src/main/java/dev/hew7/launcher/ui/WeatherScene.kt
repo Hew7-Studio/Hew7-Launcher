@@ -37,6 +37,8 @@ import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -68,7 +70,23 @@ data class SceneText(
     val weather: String,
     val tvName: String,
     val network: NetworkLabel,
+    /** Now playing, shown as a glass card in place of the TV and network names. */
+    val card: SceneCard? = null,
+    /** The glass weather pill, top right: temperature, sky words and icon. */
+    val temp: String = "",
+    val cond: String = "",
+    val sky: Sky? = null,
+    val skyNight: Boolean = false,
+    /** Late at night the text turns a warm amber (on dark pictures). */
+    val amber: Boolean = false,
+    /** The picture is bright behind the clock: dark letters instead of light ones. */
+    val darkInk: Boolean = false,
+    /** The picture is bright on the right: frosted glass with dark letters for the pill and box. */
+    val darkPanels: Boolean = false,
 )
+
+/** The screensaver's Now playing card. Rain splashes on it and snow settles on its top edge. */
+data class SceneCard(val kicker: String, val title: String, val art: ImageBitmap?, val detail: String = "")
 
 enum class SceneMood { RAIN, STORM, SNOW, SUN, NIGHT, FOG, CLOUDY }
 
@@ -79,6 +97,20 @@ fun moodFor(sky: Sky, night: Boolean): SceneMood = when (sky) {
     Sky.FOG -> SceneMood.FOG
     Sky.CLOUDY -> SceneMood.CLOUDY
     Sky.CLEAR, Sky.PARTLY -> if (night) SceneMood.NIGHT else SceneMood.SUN
+}
+
+/** How much [gradeFor] brightens or darkens the photo, to judge text colour against the graded picture. */
+fun gradeBrightness(mood: SceneMood, night: Boolean): Float {
+    val b = when (mood) {
+        SceneMood.RAIN -> 0.76f
+        SceneMood.STORM -> 0.58f
+        SceneMood.SNOW -> 1.0f
+        SceneMood.SUN -> 1.05f
+        SceneMood.NIGHT -> 0.45f
+        SceneMood.FOG -> 1.05f
+        SceneMood.CLOUDY -> 0.9f
+    }
+    return if (night && mood != SceneMood.NIGHT) b * 0.75f else b
 }
 
 /** Colour grade for the wallpaper photo so it looks like the weather outside. */
@@ -138,6 +170,7 @@ fun WeatherScene(
         },
     )
     sim.icons = tvIcon to netIcon
+    sim.weatherIcon = rememberVectorPainter(skyIcon(text.sky ?: Sky.CLOUDY, text.skyNight))
     var tick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(sim) {
         if (calm) {
@@ -159,6 +192,8 @@ fun WeatherScene(
         sim.draw(this, measurer, text, font)
     }
 }
+
+private val CardCorner = 18.dp
 
 /** Positions for a field of particles, plus a per-particle random "seed" in s. */
 private class Field(val n: Int) {
@@ -204,7 +239,22 @@ private class WeatherSim(private val mood: SceneMood, private val effects: Boole
 
     /** TV and network icons, drawn beside their lines; set by the composable each recomposition. */
     var icons: Pair<Painter, Painter>? = null
+    /** The weather pill's sky icon; set by the composable. */
+    var weatherIcon: Painter? = null
     private var iconSpots: List<Pair<Painter, Rect>> = emptyList()
+    /** Glass shapes: the weather pill (top right) and the box (bottom right). Weather lands on them. */
+    private var panels: List<Rect> = emptyList()
+    private var cardArt: Pair<ImageBitmap, Rect>? = null
+    /** Text inside the glass shapes, drawn without the big shadow. */
+    private var panelTexts: List<Pair<TextLayoutResult, Offset>> = emptyList()
+    /**
+     * Everything above drawn once into one picture. Each frame only moves this picture (by
+     * fractions of a pixel, smoothly filtered), so the drift glides instead of the letters
+     * stepping from pixel to pixel.
+     */
+    private var plate: ImageBitmap? = null
+    private var brightBehind = false
+    private var glassTone = Color(0x660A0E18)
     private var tops: Array<IntArray> = emptyArray()
     private var minuteLeft = 0f
     private var minuteRight = 0f
@@ -224,17 +274,18 @@ private class WeatherSim(private val mood: SceneMood, private val effects: Boole
 
     /** Calm mode's once-a-minute step: moves the drift along so the text shifts a few pixels. */
     fun nudge() {
-        sec += 4f
+        sec += 6f
     }
 
     fun draw(scope: DrawScope, measurer: TextMeasurer, text: SceneText, font: FontFamily) = with(scope) {
         if (size.width != w || size.height != h) resize(size)
         ensureText(measurer, text, font)
-        // Slow drift so nothing burns into the screen.
-        val off = Offset(sin(sec * 0.12f) * 16.dp.toPx(), sin(sec * 0.12f) * 8.dp.toPx())
+        // A very slow, smooth drift (about two minutes there and back) so nothing burns into the screen.
+        val off = Offset(sin(sec * 0.05f) * 12.dp.toPx(), sin(sec * 0.035f) * 6.dp.toPx())
 
         if (effects) behindText(off)
-        drawRect(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.48f)))
+        // Shade the lower half (light under dark letters, dark under light ones) so the clock reads.
+        drawRect(Brush.verticalGradient(0.5f to Color.Transparent, 1f to (if (brightBehind) Color.White.copy(alpha = 0.32f) else Color.Black.copy(alpha = 0.42f))))
         translate(off.x, off.y) { textLayer() }
         if (effects) inFront()
         if (effects && flash > 0) drawRect(Color.White.copy(alpha = flash * 0.35f), blendMode = BlendMode.Screen)
@@ -280,57 +331,157 @@ private class WeatherSim(private val mood: SceneMood, private val effects: Boole
         }
         lastTime = text.time
 
-        val shadow = when (mood) {
-            SceneMood.NIGHT -> Shadow(Color(0xCCAAC8FF), blurRadius = 18.dp.toPx())
-            SceneMood.FOG -> Shadow(Color(0xBFFFFFFF), blurRadius = 26.dp.toPx())
-            else -> Shadow(Color(0x80000000), Offset(0f, 2.dp.toPx()), 12.dp.toPx())
+        // Text colours follow the picture: dark letters where it's bright, light ones where it's
+        // dark (warm amber late at night), as on the home screen.
+        val darkText = Color(0xFF15161A)
+        val ink = when {
+            text.darkInk -> darkText
+            text.amber -> Color(0xFFF5C98A)
+            else -> Color.White
         }
-        fun style(size: TextUnit, weight: FontWeight) =
-            TextStyle(color = Color.White, fontSize = size, fontWeight = weight, fontFamily = font, shadow = shadow)
+        val sub = when {
+            text.darkInk -> darkText.copy(alpha = 0.8f)
+            text.amber -> Color(0xFFD9B47E)
+            else -> Color(0xFFD6DCEB)
+        }
+        val panelInk = if (text.darkPanels) darkText else if (text.amber) Color(0xFFF5C98A) else Color.White
+        val panelSub = if (text.darkPanels) darkText.copy(alpha = 0.75f) else if (text.amber) Color(0xFFD9B47E) else Color(0xFFD6DCEB)
+        brightBehind = text.darkInk
+        glassTone = if (text.darkPanels) Color(0x80FFFFFF) else Color(0x660A0E18)
+        // A soft, low shadow (as on the home screen), not an outline: dark under light letters,
+        // light under dark ones.
+        val shadow = when {
+            text.darkInk -> Shadow(Color(0x80FFFFFF), Offset(0f, 2.dp.toPx()), 14.dp.toPx())
+            mood == SceneMood.FOG -> Shadow(Color(0x99FFFFFF), blurRadius = 20.dp.toPx())
+            else -> Shadow(Color(0x73000000), Offset(0f, 2.dp.toPx()), 14.dp.toPx())
+        }
+        fun style(size: TextUnit, weight: FontWeight, family: FontFamily = font, color: Color = ink) =
+            TextStyle(color = color, fontSize = size, fontWeight = weight, fontFamily = family, shadow = shadow)
+        val plain = TextStyle(color = panelInk, fontFamily = font)
+        val maxText = 300.dp.toPx()
+        fun one(s: String, st: TextStyle) =
+            measurer.measure(s, st, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, constraints = androidx.compose.ui.unit.Constraints(maxWidth = maxText.toInt()))
 
-        val greeting = measurer.measure(text.greeting, style(22.sp, FontWeight.Bold))
-        val time = measurer.measure(text.time, style(96.sp, FontWeight.Light))
-        val date = measurer.measure(text.date, style(22.sp, FontWeight.Normal))
-        val weather = measurer.measure(text.weather, style(24.sp, FontWeight.Bold))
-        val tv = measurer.measure(text.tvName, style(18.sp, FontWeight.Normal))
-        val net = measurer.measure(text.network.name, style(18.sp, FontWeight.Normal))
-
-        // Left block, bottom up: weather, date, time, and the greeting on top like a headline.
-        val margin = 56.dp.toPx()
-        val weatherTop = h - margin - weather.size.height
-        val dateTop = weatherTop - 2.dp.toPx() - date.size.height
-        val timeTop = dateTop - time.size.height + 10.dp.toPx()
-        val greetingTop = timeTop - greeting.size.height + 12.dp.toPx()
-        // Right block: TV name above the network, each with its icon in front.
-        val iconSize = tv.size.height * 0.85f
-        val iconGap = 8.dp.toPx()
-        val netTop = h - margin - net.size.height
-        val tvTop = netTop - 4.dp.toPx() - tv.size.height
-        val tvX = w - margin - tv.size.width
-        val netX = w - margin - net.size.width
+        // Bottom left, the same size and order as the home screen's night look: a thin clock,
+        // the date, then the greeting.
+        val time = measurer.measure(text.time, style(48.sp, FontWeight.ExtraLight, DisplayFont).copy(letterSpacing = (-1.5).sp))
+        val date = measurer.measure(text.date, style(13.sp, FontWeight.Normal, color = sub))
+        val greeting = measurer.measure(text.greeting, style(17.sp, FontWeight.Light, DisplayFont))
+        val margin = 54.dp.toPx()
+        val greetingTop = h - 48.dp.toPx() - greeting.size.height
+        val dateTop = greetingTop - 6.dp.toPx() - date.size.height
+        val timeTop = dateTop - 8.dp.toPx() - time.size.height
         layouts = listOf(
-            greeting to Offset(margin, greetingTop),
             time to Offset(margin, timeTop),
             date to Offset(margin, dateTop),
-            weather to Offset(margin, weatherTop),
-            tv to Offset(tvX, tvTop),
-            net to Offset(netX, netTop),
+            greeting to Offset(margin, greetingTop),
         )
-        val iconInset = (tv.size.height - iconSize) / 2
-        iconSpots = icons?.let { (tvIcon, netIcon) ->
-            listOf(
-                tvIcon to Rect(Offset(tvX - iconGap - iconSize, tvTop + iconInset), Size(iconSize, iconSize)),
-                netIcon to Rect(Offset(netX - iconGap - iconSize, netTop + iconInset), Size(iconSize, iconSize)),
-            )
-        } ?: emptyList()
+
+        val spots = ArrayList<Pair<Painter, Rect>>()
+        val inside = ArrayList<Pair<TextLayoutResult, Offset>>()
+        val shapes = ArrayList<Rect>()
+        val pad = 12.dp.toPx()
+
+        // Top right: the glass weather pill, as on the home screen.
+        if (text.temp.isNotBlank()) {
+            val temp = measurer.measure(text.temp, plain.copy(fontSize = 24.sp, fontWeight = FontWeight.Light, fontFamily = DisplayFont))
+            val cond = one(text.cond, plain.copy(fontSize = 12.sp, color = panelSub))
+            val icon = 20.dp.toPx()
+            val pw = pad + 4.dp.toPx() + icon + 8.dp.toPx() + temp.size.width + 24.dp.toPx() + cond.size.width + pad + 4.dp.toPx()
+            val ph = maxOf(temp.size.height.toFloat(), icon) + pad * 1.4f
+            val r = Rect(Offset(w - margin - pw, 40.dp.toPx()), Size(pw, ph))
+            shapes += r
+            val cy = r.top + r.height / 2
+            weatherIcon?.let { spots += it to Rect(Offset(r.left + pad + 4.dp.toPx(), cy - icon / 2), Size(icon, icon)) }
+            inside += temp to Offset(r.left + pad + 4.dp.toPx() + icon + 8.dp.toPx(), cy - temp.size.height / 2)
+            inside += cond to Offset(r.right - pad - 4.dp.toPx() - cond.size.width, cy - cond.size.height / 2)
+        }
+
+        // Bottom right: a glass box, with Now playing, or else the TV and network names.
+        val card = text.card
+        cardArt = null
+        if (card != null) {
+            val kicker = one(card.kicker.uppercase(), plain.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = panelSub, letterSpacing = 1.sp))
+            val title = one(card.title, plain.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+            val detail = one(card.detail, plain.copy(fontSize = 12.sp, color = panelSub))
+            val artH = 48.dp.toPx()
+            val artW = if (card.art != null) artH * 16f / 9f else 0f
+            val gap = if (card.art != null) 12.dp.toPx() else 0f
+            val textW = maxOf(kicker.size.width, title.size.width, detail.size.width).toFloat().coerceAtLeast(150.dp.toPx())
+            val cw = pad + artW + gap + textW + pad
+            val ch = pad + artH + pad
+            val r = Rect(Offset(w - margin - cw, h - margin - ch), Size(cw, ch))
+            shapes += r
+            cardArt = card.art?.let { it to Rect(Offset(r.left + pad, r.top + pad), Size(artW, artH)) }
+            val tx = r.left + pad + artW + gap
+            val lines = listOf(kicker, title) + if (card.detail.isNotBlank()) listOf(detail) else emptyList()
+            val textH = lines.sumOf { it.size.height } + (lines.size - 1) * 2.dp.toPx()
+            var ty = r.top + (ch - textH) / 2
+            lines.forEach { l -> inside += l to Offset(tx, ty); ty += l.size.height + 2.dp.toPx() }
+        } else if (text.tvName.isNotBlank() || text.network.name.isNotBlank()) {
+            val tv = one(text.tvName, plain.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium))
+            val net = one(text.network.name, plain.copy(fontSize = 13.sp, color = panelSub))
+            val icon = tv.size.height * 0.9f
+            val gap = 8.dp.toPx()
+            val cw = pad + icon + gap + maxOf(tv.size.width, net.size.width) + pad + 4.dp.toPx()
+            val ch = pad + tv.size.height + 4.dp.toPx() + net.size.height + pad
+            val r = Rect(Offset(w - margin - cw, h - margin - ch), Size(cw, ch))
+            shapes += r
+            val tx = r.left + pad + icon + gap
+            val tvTop = r.top + pad
+            val netTop = tvTop + tv.size.height + 4.dp.toPx()
+            inside += tv to Offset(tx, tvTop)
+            inside += net to Offset(tx, netTop)
+            icons?.let { (tvIcon, netIcon) ->
+                spots += tvIcon to Rect(Offset(r.left + pad, tvTop + (tv.size.height - icon) / 2), Size(icon, icon))
+                spots += netIcon to Rect(Offset(r.left + pad, netTop + (net.size.height - icon) / 2), Size(icon, icon))
+            }
+        }
+        iconSpots = spots
+        panelTexts = inside
+        panels = shapes
+
         val colon = text.time.indexOf(':') + 1
         minuteLeft = margin + if (colon in 1 until text.time.length) time.getBoundingBox(colon).left else 0f
         minuteRight = margin + time.size.width
         minuteBottom = timeTop + time.size.height
 
+        plate = ImageBitmap(w.toInt().coerceAtLeast(1), h.toInt().coerceAtLeast(1)).also { img ->
+            CanvasDrawScope().draw(Density(density, fontScale), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(img), Size(w, h)) {
+                drawPlate(panelInk)
+            }
+        }
         computeTops()
         // Drop snow that no longer sits on a surface.
         caps.keys.removeAll { k -> (k % 8192) !in (tops.getOrNull(k / 8192) ?: IntArray(0)) }
+    }
+
+    /** Draws the glass shapes, the artwork, the icons and all the text: the picture that drifts. */
+    private fun DrawScope.drawPlate(ink: Color) {
+        val corner = CornerRadius(CardCorner.toPx())
+        panels.forEach { r ->
+            drawRoundRect(glassTone, r.topLeft, r.size, corner)
+            drawRoundRect(Color.White.copy(alpha = 0.2f), r.topLeft, r.size, corner, style = Stroke(1.dp.toPx()))
+        }
+        cardArt?.let { (img, a) ->
+            val clip = Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(a, CornerRadius(10.dp.toPx()))) }
+            clipPath(clip) {
+                // Cover the 16:9 box, cropping the artwork's centre.
+                val k = maxOf(a.width / img.width, a.height / img.height)
+                val sw = (a.width / k).toInt().coerceIn(1, img.width)
+                val sh = (a.height / k).toInt().coerceIn(1, img.height)
+                drawImage(
+                    img,
+                    srcOffset = androidx.compose.ui.unit.IntOffset((img.width - sw) / 2, (img.height - sh) / 2),
+                    srcSize = androidx.compose.ui.unit.IntSize(sw, sh),
+                    dstOffset = androidx.compose.ui.unit.IntOffset(a.left.toInt(), a.top.toInt()),
+                    dstSize = androidx.compose.ui.unit.IntSize(a.width.toInt(), a.height.toInt()),
+                )
+            }
+        }
+        drawIcons(ink.copy(alpha = 0.92f))
+        layouts.forEach { (l, p) -> drawText(l, topLeft = p) }
+        panelTexts.forEach { (l, p) -> drawText(l, topLeft = p) }
     }
 
     /** Finds every upward-facing edge of the text by drawing it (at half size) and scanning the alpha. */
@@ -341,7 +492,8 @@ private class WeatherSim(private val mood: SceneMood, private val effects: Boole
         CanvasDrawScope().draw(Density(density, fontScale), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(img), Size(sw.toFloat(), sh.toFloat())) {
             scale(0.5f, pivot = Offset.Zero) {
                 layouts.forEach { (l, p) -> drawText(l, topLeft = p, shadow = Shadow.None) }
-                drawIcons(Color.White)
+                // The glass shapes are solid here, so only their top edges count as surfaces.
+                panels.forEach { drawRoundRect(Color.White, it.topLeft, it.size, CornerRadius(CardCorner.toPx())) }
             }
         }
         val px = IntArray(sw * sh)
@@ -394,15 +546,15 @@ private class WeatherSim(private val mood: SceneMood, private val effects: Boole
     }
 
     private fun DrawScope.textLayer() {
-        layouts.forEach { (l, p) -> drawText(l, topLeft = p) }
-        drawIcons(Color.White.copy(alpha = 0.9f))
+        val img = plate ?: return
+        drawImage(img, topLeft = Offset.Zero)
 
         if (effects && mood == SceneMood.SUN) {
-            // A warm glint sweeping slowly across the text.
+            // A warm glint sweeping slowly across the text (the same picture, tinted, through a slit).
             val band = 50 * u
             val gx = (sec * 180 * u) % (w + 600 * u) - 300 * u
             clipRect(gx - band, 0f, gx + band, h) {
-                layouts.forEach { (l, p) -> drawText(l, color = Color(0xFFFFE2A8), topLeft = p, alpha = 0.7f, shadow = Shadow.None) }
+                drawImage(img, topLeft = Offset.Zero, alpha = 0.6f, colorFilter = ColorFilter.tint(Color(0xFFFFE2A8), BlendMode.SrcIn))
             }
         }
 

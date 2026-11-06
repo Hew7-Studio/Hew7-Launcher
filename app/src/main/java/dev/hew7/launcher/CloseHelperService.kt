@@ -56,14 +56,25 @@ class CloseHelperService : AccessibilityService() {
 
     private var cover: View? = null
     private var coverText: TextView? = null
+    /** Where the progress shows: on the button that was pressed, or null for the corner pill. */
+    private var anchor: Anchor? = null
+
+    /**
+     * The button that was pressed, in screen pixels, and how it looks, so the progress can show
+     * right on it (a spinner in place of a round button's icon; a spinner and text on a pill).
+     */
+    data class Anchor(val rect: android.graphics.Rect, val round: Boolean, val fill: Int, val ink: Int, val stroke: Int, val label: Boolean = false)
 
     override fun onServiceConnected() {
         instance = this
+        // If the TV restarted (or Hew7 stopped) while the clicks were off, put them back.
+        restoreClicks()
         AppButtons.listen(this)
     }
 
     override fun onDestroy() {
         removeCover()
+        restoreClicks()
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -77,7 +88,8 @@ class CloseHelperService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean = RemoteKeys.onKey(event)
 
     /** Force-stops these apps one by one behind the cover, then shows Running Apps again. */
-    fun close(packages: List<String>) {
+    fun close(packages: List<String>, at: Anchor? = null) {
+        anchor = at
         queue.clear()
         queue.addAll(packages)
         closed.clear()
@@ -86,10 +98,12 @@ class CloseHelperService : AccessibilityService() {
     }
 
     /** Opens the main settings list and selects the row with one of these labels. */
-    fun openSettingsEntry(labels: List<String>) {
+    fun openSettingsEntry(labels: List<String>, at: Anchor? = null) {
         entryLabels = labels
         entryPending = false
-        showCover(showProgress = false) {
+        anchor = at
+        showCover(showProgress = at != null) {
+            coverText?.text = "Opening…"
             stage = Stage.OPEN_ENTRY
             current = ENTRY
             startActivity(
@@ -117,7 +131,11 @@ class CloseHelperService : AccessibilityService() {
             return
         }
         val label = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)) }.getOrNull() ?: pkg
-        coverText?.text = if (total > 1) "Closing $label · ${total - queue.size} of $total" else "Closing $label"
+        coverText?.text = when {
+            anchor != null -> if (total > 1) "Closing ${total - queue.size} of $total" else "Closing…"
+            total > 1 -> "Closing $label · ${total - queue.size} of $total"
+            else -> "Closing $label"
+        }
         stage = Stage.FORCE_STOP
         startActivity(
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
@@ -130,7 +148,8 @@ class CloseHelperService : AccessibilityService() {
     // ---------- Restart and Shut Down ----------
 
     /** Restarts the TV through Android's own power menu (Restart, then any confirmation). */
-    fun restart() {
+    fun restart(at: Anchor? = null) {
+        anchor = at
         showCover(showProgress = true) {
             coverText?.text = "Restarting…"
             performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
@@ -144,7 +163,8 @@ class CloseHelperService : AccessibilityService() {
     }
 
     /** Shuts the TV down through Android's own power menu (Power off, then its confirmation). */
-    fun shutDown() {
+    fun shutDown(at: Anchor? = null) {
+        anchor = at
         showCover(showProgress = true) {
             coverText?.text = "Shutting down…"
             performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
@@ -300,6 +320,8 @@ class CloseHelperService : AccessibilityService() {
     /** Freezes the screen as it is now, then runs [then] underneath it. */
     private fun showCover(showProgress: Boolean, then: () -> Unit) {
         removeCover()
+        // The settings pages it presses through would click and beep; keep them quiet.
+        muteClicks()
         var started = false
         val start = {
             if (!started) {
@@ -349,7 +371,46 @@ class CloseHelperService : AccessibilityService() {
                 setBackgroundColor(Color.argb(235, 12, 14, 18))
             }
         }
-        if (showProgress) {
+        val a = anchor
+        if (showProgress && a != null) {
+            // Right on the button that was pressed.
+            val spinner = ProgressBar(this).apply {
+                isIndeterminate = true
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(a.ink)
+            }
+            val h = a.rect.height()
+            val onButton = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    cornerRadius = h / 2f
+                    setColor(a.fill)
+                    if (a.stroke != 0) setStroke(dp(2f), a.stroke)
+                }
+                if (!a.label) {
+                    // Just the spinner, the size of the button (small pills have no room for words).
+                    val size = (h * 0.68f).toInt()
+                    addView(spinner, LinearLayout.LayoutParams(size, size))
+                } else {
+                    setPadding(dp(10f), 0, dp(10f), 0)
+                    addView(spinner, LinearLayout.LayoutParams((h * 0.55f).toInt(), (h * 0.55f).toInt()))
+                    coverText = TextView(context).apply {
+                        setTextColor(a.ink)
+                        textSize = 11f
+                        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                        setPadding(dp(6f), 0, 0, 0)
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    }
+                    addView(coverText)
+                }
+            }
+            root.addView(onButton, FrameLayout.LayoutParams(a.rect.width(), h).apply {
+                gravity = Gravity.TOP or Gravity.START
+                leftMargin = a.rect.left
+                topMargin = a.rect.top
+            })
+        } else if (showProgress) {
             val pill = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -383,7 +444,8 @@ class CloseHelperService : AccessibilityService() {
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         )
         runCatching { wm.addView(root, params) }.onSuccess { cover = root }
@@ -394,11 +456,45 @@ class CloseHelperService : AccessibilityService() {
         cover = null
         coverText = null
         runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(v) }
+        restoreClicks()
+    }
+
+    // ---------- quiet while working ----------
+
+    private val clickPrefs get() = getSharedPreferences("helper", MODE_PRIVATE)
+
+    /** Turns the TV's system sounds off, remembering how they were (kept across a restart). */
+    private fun muteClicks() {
+        if (!Settings.System.canWrite(this)) { android.util.Log.w(TAG, "mute: can't write settings"); return }
+        val was = runCatching { Settings.System.getInt(contentResolver, Settings.System.SOUND_EFFECTS_ENABLED) }
+            .onFailure { android.util.Log.w(TAG, "mute: read failed", it) }.getOrNull() ?: return
+        if (!clickPrefs.contains(KEY_CLICKS)) {
+            if (was == 0) return
+            clickPrefs.edit().putInt(KEY_CLICKS, was).commit()
+        }
+        val ok = runCatching { Settings.System.putInt(contentResolver, Settings.System.SOUND_EFFECTS_ENABLED, 0) }
+            .onFailure { android.util.Log.w(TAG, "mute: write failed", it) }.getOrNull()
+        android.util.Log.i(TAG, "mute: was=$was ok=$ok now=${runCatching { Settings.System.getInt(contentResolver, Settings.System.SOUND_EFFECTS_ENABLED) }.getOrNull()}")
+    }
+
+    /** Puts the system sounds back as they were before [muteClicks]. */
+    private fun restoreClicks() {
+        if (!clickPrefs.contains(KEY_CLICKS)) return
+        // A moment later, so the last press's sound (if still queued) passes silently.
+        handler.postDelayed({
+            if (cover != null || !clickPrefs.contains(KEY_CLICKS)) return@postDelayed
+            val was = clickPrefs.getInt(KEY_CLICKS, 1)
+            android.util.Log.i(TAG, "restore: $was")
+            if (Settings.System.canWrite(this)) runCatching { Settings.System.putInt(contentResolver, Settings.System.SOUND_EFFECTS_ENABLED, was) }
+            clickPrefs.edit().remove(KEY_CLICKS).apply()
+        }, 400)
     }
 
     companion object {
         private const val SETTINGS_PKG = "com.android.tv.settings"
         private const val ENTRY = "entry"
+        private const val KEY_CLICKS = "clicks_were"
+        private const val TAG = "Hew7Helper"
 
         var instance: CloseHelperService? = null
             private set

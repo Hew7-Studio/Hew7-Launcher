@@ -149,6 +149,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.SdStorage
+import androidx.compose.material.icons.rounded.SettingsEthernet
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.tv.material3.Border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
 
 /** When Left or Right was last pressed in a panel; a blade only switches pages right after one. */
 private var lastSideKeyAt = 0L
@@ -158,10 +176,12 @@ private val TileShape = RoundedCornerShape(12.dp)
 private val BarShape = RoundedCornerShape(3.dp)
 
 /**
- * Frosted panel that slides in from the right edge, about the size of Google TV's own panel. It
- * lives in its own dialog window so focus can't wander to the home screen behind it, and returns
- * to the opening button when it closes. An optional blade sits before or after it, and optional
- * round buttons sit at the top right of the title.
+ * Hew7 2.0's panel: a frosted glass strip across the top of the screen that grows sideways out of
+ * the top-right corner, the way the weather pill opens. Its items flow into columns from left to
+ * right (Up and Down within a column, Left and Right between columns), and it widens or narrows
+ * smoothly to fit each page. It lives in its own dialog window so focus can't wander to the home
+ * screen behind it, and returns to the opening button when it closes. An optional blade sits
+ * before or after it, and optional round buttons sit beside the title.
  */
 @Composable
 fun SidePanel(
@@ -173,9 +193,19 @@ fun SidePanel(
     bladeEnd: (@Composable () -> Unit)? = null,
     headerActions: (@Composable RowScope.() -> Unit)? = null,
     focusKey: Any = Unit,
+    /** Shown before the title, as the weather pill shows its sky. */
+    icon: ImageVector? = null,
+    /** Small text at the right of the header, like the pill's "Cloudy". */
+    detail: String? = null,
+    /** Lay the page out as a row of pill cells (like the pill's hours) instead of short columns. */
+    cells: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val c = LocalLauncherColors.current
+    // The weather pill's look: smoky glass, a thin white edge, light letters (whatever the theme).
+    val theme = LocalLauncherColors.current
+    val c = panelColors(theme)
+    // A little more solid than the pill, and more so in the light theme (bright daytime photos).
+    val glass = Color(0xFF0A0E18).copy(alpha = (0.3f + 0.4f * alpha + if (theme.dark) 0f else 0.12f).coerceIn(0.45f, 0.82f))
     val visible = remember { MutableTransitionState(false).apply { targetState = true } }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         (LocalView.current.parent as? DialogWindowProvider)?.window?.setDimAmount(0.15f)
@@ -196,37 +226,123 @@ fun SidePanel(
                     // Remote buttons (Settings, Menu...) work with a panel open too.
                     RemoteKeys.onKey(e.nativeKeyEvent)
                 },
-            contentAlignment = Alignment.CenterEnd,
+            contentAlignment = Alignment.TopEnd,
         ) {
             AnimatedVisibility(
                 visibleState = visible,
-                enter = slideInHorizontally(spring(dampingRatio = 0.8f, stiffness = 300f)) { it } + fadeIn(),
+                // Grows out sideways from where the weather pill sits, the way the pill opens.
+                enter = expandHorizontally(spring(dampingRatio = 0.85f, stiffness = 240f), expandFrom = Alignment.End) + fadeIn(tween(250)),
             ) {
-                Row(Modifier.fillMaxHeight().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompositionLocalProvider(LocalLauncherColors provides c) {
+                Row(Modifier.padding(top = 36.dp, end = 48.dp, start = 48.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     bladeStart?.invoke()
                     Column(
                         Modifier
-                            .width(300.dp)
-                            .fillMaxHeight()
-                            .background(c.glassStrong.copy(alpha = alpha), PanelShape)
-                            .clip(PanelShape)
-                            // Padding inside the scrolling area, so selected items that grow
-                            // (the round header buttons, tiles) aren't cut off at its edges.
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp, vertical = 18.dp),
+                            .background(glass, PillShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), PillShape)
+                            .clip(PillShape)
+                            // Widens and narrows smoothly as pages change.
+                            .animateContentSize(spring(dampingRatio = 0.85f, stiffness = 260f))
+                            .padding(horizontal = 15.dp, vertical = 10.dp),
                     ) {
-                        ProvideTextStyle(LocalTextStyle.current.copy(shadow = null)) {
-                            Row(verticalAlignment = Alignment.Top) {
-                                Text(title, color = c.text, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).padding(top = 4.dp))
+                        ProvideTextStyle(LocalTextStyle.current.copy(shadow = null, color = c.text)) {
+                            // Header, like the pill's top line: icon, a light Outfit title, small text on the right.
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(36.dp)) {
+                                icon?.let { Icon(it, contentDescription = null, tint = c.text, modifier = Modifier.size(20.dp)) }
+                                Text(
+                                    title, color = c.text, fontSize = 22.sp, fontWeight = FontWeight.Light, fontFamily = DisplayFont,
+                                    modifier = Modifier.padding(start = if (icon != null) 8.dp else 0.dp, end = 28.dp),
+                                )
+                                detail?.let { Text(it, color = c.subtext, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(end = 12.dp)) }
                                 headerActions?.let { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = it) }
                             }
-                            Spacer(Modifier.height(10.dp))
-                            content()
+                            // The pill's thin divider, then the page. Padding inside the scrolling
+                            // area, so selected cells that grow aren't cut off at its edges.
+                            Box(
+                                Modifier
+                                    .padding(top = 10.dp)
+                                    .drawBehind { drawLine(Color.White.copy(alpha = 0.2f), Offset.Zero, Offset(size.width, 0f), 1.dp.toPx()) }
+                                    .padding(top = 8.dp)
+                                    .heightIn(max = 260.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                            ) {
+                                if (cells) {
+                                    CompositionLocalProvider(LocalCellRow provides true) { CellRow(Modifier.padding(4.dp)) { content() } }
+                                } else {
+                                    FlowingColumns(Modifier.padding(4.dp)) { content() }
+                                }
+                            }
                         }
                     }
                     bladeEnd?.invoke()
                 }
+                }
             }
+        }
+    }
+}
+
+/** Light letters for the panels' smoky glass, in either theme. */
+internal fun panelColors(theme: LauncherColors) = theme.copy(
+    text = Color(0xFFF5F5F7),
+    subtext = Color(0xBFF5F5F7),
+    glass = Color.White.copy(alpha = 0.1f),
+    focusFill = Color(0xFFF5F5F7),
+    onFocusFill = Color(0xFF15161A),
+    // dark stays the theme's, so the glass can be a touch more solid in the daytime.
+)
+
+/** The weather pill's shape, shared by the panels and their blades. */
+private val PillShape = RoundedCornerShape(18.dp)
+private val ColumnWidth = 250.dp
+private val ColumnGap = 18.dp
+
+/**
+ * Lays its items side by side, like the open weather pill's hours. Items that aren't cells (a
+ * note, the Helper's notice) get a column's width and sit in line with the cells.
+ */
+@Composable
+private fun CellRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content, modifier) { measurables, constraints ->
+        val gap = 6.dp.roundToPx()
+        val maxW = ColumnWidth.roundToPx()
+        val maxH = if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE
+        val placeables = measurables.map { it.measure(Constraints(maxWidth = maxW, maxHeight = maxH)) }
+        val h = placeables.maxOfOrNull { it.height } ?: 0
+        var x = 0
+        val xs = placeables.map { p -> x.also { x += p.width + if (p.width > 1) gap else 0 } }
+        layout((x - gap).coerceAtLeast(0), h) {
+            placeables.forEachIndexed { i, p -> p.place(xs[i], (h - p.height) / 2) }
+        }
+    }
+}
+
+/**
+ * Lays its items top to bottom in columns of [ColumnWidth]; when a column is full, the next item
+ * starts a new column to the right. So a page's list reads across the strip, not down the screen.
+ */
+@Composable
+private fun FlowingColumns(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content, modifier) { measurables, constraints ->
+        val cw = ColumnWidth.roundToPx()
+        val gap = ColumnGap.roundToPx()
+        val maxH = if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE
+        val placeables = measurables.map { it.measure(Constraints(maxWidth = cw, maxHeight = maxH)) }
+        val spots = ArrayList<IntOffset>(placeables.size)
+        var col = 0
+        var y = 0
+        var tallest = 0
+        placeables.forEach { p ->
+            if (y > 0 && y + p.height > maxH) {
+                col++
+                y = 0
+            }
+            spots += IntOffset(col * (cw + gap), y)
+            y += p.height
+            tallest = maxOf(tallest, y)
+        }
+        layout((col + 1) * cw + col * gap, tallest) {
+            placeables.forEachIndexed { i, p -> p.place(spots[i]) }
         }
     }
 }
@@ -249,8 +365,7 @@ private fun Anchor(first: FocusRequester) {
     }
     Box(
         Modifier
-            .fillMaxWidth()
-            .height(1.dp)
+            .size(1.dp)
             .focusRequester(first)
             .onFocusChanged {
                 if (it.isFocused) held = true else if (held) spent = true
@@ -261,18 +376,18 @@ private fun Anchor(first: FocusRequester) {
 }
 
 /** Starts the first intent that opens; falls back to the TV's main settings. */
-private fun Context.openSetting(vararg intents: Intent) = startFirst(*intents, Intent(Settings.ACTION_SETTINGS))
+internal fun Context.openSetting(vararg intents: Intent) = startFirst(*intents, Intent(Settings.ACTION_SETTINGS))
 
-private fun component(pkg: String, cls: String) = Intent().setComponent(ComponentName(pkg, cls))
+internal fun component(pkg: String, cls: String) = Intent().setComponent(ComponentName(pkg, cls))
 
 /**
  * Opens a page of the TV's settings that has no direct link, by its row label in the main list.
  * The Hew7 Helper selects the row out of sight; without it, the main settings list opens.
  */
-private fun Context.openSettingsEntry(vararg labels: String) {
+internal fun Context.openSettingsEntry(vararg labels: String, at: CloseHelperService.Anchor? = null) {
     val helper = CloseHelperService.instance
     if (helper != null && CloseHelperService.isEnabled(this)) {
-        helper.openSettingsEntry(labels.toList())
+        helper.openSettingsEntry(labels.toList(), at)
     } else {
         explainHelper()
         openSetting(component("com.android.tv.settings", "com.android.tv.settings.MainSettings"))
@@ -289,7 +404,7 @@ fun InputsPanel(alpha: Float, onClose: () -> Unit) {
     val sources = remember { repo.list() }
     val first = remember { FocusRequester() }
 
-    SidePanel("Inputs", first, alpha, onClose) {
+    SidePanel("Inputs", first, alpha, onClose, icon = Icons.Rounded.Input, cells = true) {
         if (sources.isEmpty()) {
             Anchor(first)
             Text("This TV didn't report any inputs.", color = c.subtext, fontSize = 14.sp)
@@ -348,48 +463,32 @@ fun MachineRoomPanel(vm: HomeViewModel, alpha: Float, startOnRunningApps: Boolea
         return
     }
 
-    SidePanel("Machine Room", first, alpha, onClose) {
+    val s = snap
+    SidePanel(
+        "Machine Room", first, alpha, onClose,
+        icon = Icons.Rounded.Memory,
+        detail = s?.let { "${it.model} · up ${duration(it.uptimeMillis)}" },
+        cells = true,
+    ) {
         // Never recomposes away, so focus survives the data arriving.
         Anchor(first)
 
-        val s = snap
         if (s == null) {
-            Text("Reading…", color = c.subtext, fontSize = 14.sp)
+            Text("Reading…", color = c.subtext, fontSize = 13.sp)
         } else {
-            Text("${s.model} · ${s.android}", color = c.subtext, fontSize = 13.sp)
-            Text("Up for ${duration(s.uptimeMillis)}", color = c.subtext, fontSize = 13.sp)
-
-            Section("CPU")
-            StatRow(s.cpu.chip, "${s.cpu.cores} Cores")
+            // One figure per cell, like the weather pill's hours.
             val clock = s.cpu.currentMhz?.let { "%.1f GHz".format(Locale.US, it / 1000f) }
-            val max = s.cpu.maxMhz?.takeIf { it > 0 }?.let { "Max %.1f GHz".format(Locale.US, it / 1000f) }
-            if (clock != null || max != null) StatRow("Speed", listOfNotNull(clock, max).joinToString(" · "))
-            s.cpu.temperatureC?.let { StatRow("Temperature", "${it.toInt()}°C") }
-            s.cpu.usagePercent?.let {
-                StatRow("Usage", "$it%")
-                UsageBar(it / 100f)
-            }
-
-            Section("Memory")
-            StatRow("RAM", "${gb(s.ramUsed)} / ${gb(s.ramTotal)}")
-            UsageBar(s.ramUsed.toFloat() / s.ramTotal)
-            StatRow("Storage", "${gb(s.storageUsed)} / ${gb(s.storageTotal)}")
-            UsageBar(s.storageUsed.toFloat() / s.storageTotal)
-
-            Section("Network")
+            StatCell(Icons.Rounded.Memory, "CPU", s.cpu.usagePercent?.let { "$it%" } ?: "${s.cpu.cores} cores", s.cpu.usagePercent?.let { it / 100f })
+            if (clock != null) StatCell(Icons.Rounded.Speed, "Speed", clock)
+            s.cpu.temperatureC?.let { StatCell(Icons.Rounded.Thermostat, "Temperature", "${it.toInt()}°C") }
+            StatCell(Icons.Rounded.Memory, "RAM", "${gbShort(s.ramUsed)} / ${gb(s.ramTotal)}", s.ramUsed.toFloat() / s.ramTotal)
+            StatCell(Icons.Rounded.SdStorage, "Storage", "${gbShort(s.storageUsed)} / ${gb(s.storageTotal)}", s.storageUsed.toFloat() / s.storageTotal)
             val n = s.network
-            StatRow(n.type, n.wifiName ?: "")
-            n.signalPercent?.let { StatRow("Signal", "$it%") }
-            n.linkMbps?.let { StatRow("Link Speed", "$it Mbps") }
-            n.ip?.let { StatRow("IP Address", it) }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Speed(Icons.Rounded.ArrowDownward, n.downBytesPerSec)
-                Speed(Icons.Rounded.ArrowUpward, n.upBytesPerSec)
-            }
+            StatCell(if (n.type == "Wi-Fi") Icons.Rounded.Wifi else Icons.Rounded.SettingsEthernet, n.type, n.signalPercent?.let { "$it%" } ?: n.linkMbps?.let { "$it Mbps" } ?: "")
+            StatCell(Icons.Rounded.ArrowDownward, "Down", speed(n.downBytesPerSec))
+            StatCell(Icons.Rounded.ArrowUpward, "Up", speed(n.upBytesPerSec))
         }
 
-        // Last on purpose: it takes a deliberate Down then OK.
-        Spacer(Modifier.height(14.dp))
         val r = running
         MenuItem(
             icon = Icons.Rounded.Apps,
@@ -449,6 +548,7 @@ private fun RunningAppsPage(vm: HomeViewModel, fresh: List<RunningApp>?, alpha: 
         alpha,
         onClose = onBack,
         bladeStart = { Blade(Icons.Rounded.ChevronLeft, "Machine Room", alpha, onEnter = onBack) },
+        icon = Icons.Rounded.Apps,
     ) {
         Anchor(first)
         HelperNotice("Closing apps and Close All Apps")
@@ -489,7 +589,7 @@ private fun RunningAppsPage(vm: HomeViewModel, fresh: List<RunningApp>?, alpha: 
     }
 }
 
-private fun Context.openAccessibilitySettings() = openSetting(
+internal fun Context.openAccessibilitySettings() = openSetting(
     component("com.android.tv.settings", "com.android.tv.settings.oemlink.AccessibilitySettingsActivity"),
     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
 )
@@ -497,9 +597,9 @@ private fun Context.openAccessibilitySettings() = openSetting(
 // ---------- Hew7 Helper status, shown wherever a feature needs it ----------
 
 /** Running; switched on but stopped (Android stops it whenever Hew7 is updated); or switched off. */
-private enum class HelperState { RUNNING, STOPPED, OFF }
+internal enum class HelperState { RUNNING, STOPPED, OFF }
 
-private fun helperState(context: Context) = when {
+internal fun helperState(context: Context) = when {
     !CloseHelperService.isEnabled(context) -> HelperState.OFF
     CloseHelperService.instance == null -> HelperState.STOPPED
     else -> HelperState.RUNNING
@@ -507,14 +607,14 @@ private fun helperState(context: Context) = when {
 
 /** Checked again whenever the panel comes back into focus, e.g. after a visit to Accessibility. */
 @Composable
-private fun rememberHelperState(): HelperState {
+internal fun rememberHelperState(): HelperState {
     val context = LocalContext.current
     val focused = LocalWindowInfo.current.isWindowFocused
     return remember(focused) { helperState(context) }
 }
 
 /** For a tap on a feature that needs the helper while it isn't running. */
-private fun Context.explainHelper() {
+internal fun Context.explainHelper() {
     val text = when (helperState(this)) {
         HelperState.STOPPED -> "Hew7 Helper has stopped. Choose Restart Hew7 Helper on this page, then switch it off and on."
         else -> "This needs Hew7 Helper. Choose Turn On Hew7 Helper on this page."
@@ -527,7 +627,7 @@ private fun Context.explainHelper() {
  * features on this page that need it. Shows nothing while the helper is running.
  */
 @Composable
-private fun HelperNotice(needs: String) {
+internal fun HelperNotice(needs: String) {
     val context = LocalContext.current
     val c = LocalLauncherColors.current
     val state = rememberHelperState()
@@ -559,7 +659,7 @@ private fun HelperNotice(needs: String) {
  * that use the Accessibility API for this). Nothing changes unless you choose Agree.
  */
 @Composable
-private fun HelperConsentDialog(onAgree: () -> Unit, onDecline: () -> Unit) {
+internal fun HelperConsentDialog(onAgree: () -> Unit, onDecline: () -> Unit) {
     val c = LocalLauncherColors.current
     val agree = remember { FocusRequester() }
     Dialog(onDismissRequest = onDecline, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -672,13 +772,13 @@ private enum class Page(val title: String) {
     ABOUT("About Hew7"),
 }
 
-private val WallpaperIntervals = listOf(5, 15, 60, 360)
-private val ScreensaverDelays = listOf(5, 10, 15, 30, 60).map { it * 60_000 } + Int.MAX_VALUE
-private val CalmAfter = listOf(15, 30, 60, 0)
-private val SleepAfter = listOf(60, 120, 240, 0)
+internal val WallpaperIntervals = listOf(5, 15, 60, 360)
+internal val ScreensaverDelays = listOf(5, 10, 15, 30, 60).map { it * 60_000 } + Int.MAX_VALUE
+internal val CalmAfter = listOf(15, 30, 60, 0)
+internal val SleepAfter = listOf(60, 120, 240, 0)
 
-private fun minutesLabel(m: Int) = if (m < 60) "$m Minutes" else if (m == 60) "1 Hour" else "${m / 60} Hours"
-private fun delayLabel(ms: Int) = if (ms == Int.MAX_VALUE) "Never" else minutesLabel(ms / 60_000)
+internal fun minutesLabel(m: Int) = if (m < 60) "$m Minutes" else if (m == 60) "1 Hour" else "${m / 60} Hours"
+internal fun delayLabel(ms: Int) = if (ms == Int.MAX_VALUE) "Never" else minutesLabel(ms / 60_000)
 
 /**
  * Hew7 Settings first, with a slim Quick Settings blade on the right. Every Hew7 tile opens its
@@ -767,6 +867,17 @@ fun SettingsPanel(vm: HomeViewModel, alpha: Float, startOnQuick: Boolean = false
         alpha = alpha,
         onClose = back,
         focusKey = page,
+        icon = when (page) {
+            Page.QUICK -> Icons.Rounded.Tune
+            Page.POWER -> Icons.Rounded.PowerSettingsNew
+            Page.REMOTE, Page.REMOTE_BUTTON, Page.REMOTE_APP -> Icons.Rounded.SettingsRemote
+            else -> Icons.Rounded.Settings
+        },
+        // Pages of choices and tiles read across like the pill's hours; text and lists stay in columns.
+        cells = page in setOf(
+            Page.HEW7, Page.QUICK, Page.THEME, Page.FONT, Page.GREETINGS, Page.TILES, Page.NAMES,
+            Page.TEMPERATURE, Page.POWER, Page.REMOTE_BUTTON, Page.REMOTE_APP,
+        ),
         bladeStart = when (page) {
             Page.QUICK -> ({ Blade(Icons.Rounded.ChevronLeft, "Hew7 Settings", alpha) { toHew7(fromTile = false) } })
             Page.HEW7 -> null
@@ -1049,8 +1160,8 @@ private fun <T> Options(values: List<T>, current: T, label: (T) -> String, onPic
 }
 
 /** How solid panels and the dock can be; each slider shows its range as 0–100%. */
-private val PanelRange = 0.4f..1f
-private val DockRange = 0f..0.8f
+internal val PanelRange = 0.4f..1f
+internal val DockRange = 0f..0.8f
 
 private fun fractionOf(v: Float, range: ClosedFloatingPointRange<Float>) =
     ((v - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
@@ -1135,38 +1246,23 @@ private class TileSpec(
     val onClick: () -> Unit,
 )
 
-/** Two-column grid of settings tiles; a wide tile takes a row to itself. */
+/** Settings tiles, one per line of a column; the strip's columns lay them out side by side. */
 @Composable
 private fun TileGrid(tiles: List<TileSpec>) {
-    val rows = buildList {
-        var pending = mutableListOf<TileSpec>()
-        for (t in tiles) {
-            if (t.wide) {
-                if (pending.isNotEmpty()) add(pending)
-                add(listOf(t))
-                pending = mutableListOf()
-            } else {
-                pending += t
-                if (pending.size == 2) {
-                    add(pending)
-                    pending = mutableListOf()
-                }
-            }
-        }
-        if (pending.isNotEmpty()) add(pending)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-        rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { Tile(it, Modifier.weight(1f)) }
-                if (row.size == 1 && !row[0].wide) Spacer(Modifier.weight(1f))
-            }
-        }
-    }
+    val cells = LocalCellRow.current
+    tiles.forEach { Tile(it, if (cells) Modifier else Modifier.fillMaxWidth().padding(vertical = 4.dp)) }
 }
 
 @Composable
 private fun Tile(spec: TileSpec, modifier: Modifier = Modifier) {
+    if (LocalCellRow.current) {
+        PillCell(
+            spec.icon, spec.title, spec.subtitle, spec.onClick,
+            modifier = spec.focus?.let { Modifier.focusRequester(it) } ?: Modifier,
+            onLongClick = spec.onLongClick,
+        )
+        return
+    }
     val c = LocalLauncherColors.current
     var focused by remember { mutableStateOf(false) }
     Surface(
@@ -1206,12 +1302,15 @@ private fun Blade(icon: ImageVector, label: String, alpha: Float, onEnter: () ->
     // hand focus to the blade by itself; only a Left/Right press moving onto it switches pages.
     Surface(
         onClick = onEnter,
-        modifier = Modifier.width(44.dp).fillMaxHeight().onFocusChanged {
+        modifier = Modifier.width(40.dp).height(CellHeight + 64.dp).onFocusChanged {
             if (it.isFocused && SystemClock.uptimeMillis() - lastSideKeyAt < 400) onEnter()
         },
-        shape = ClickableSurfaceDefaults.shape(PanelShape),
+        shape = ClickableSurfaceDefaults.shape(PillShape),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)), shape = PillShape),
+        ),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = c.glassStrong.copy(alpha = alpha * 0.75f),
+            containerColor = Color(0xFF0A0E18).copy(alpha = (0.25f + 0.35f * alpha).coerceIn(0.3f, 0.65f)),
             contentColor = c.subtext,
             focusedContainerColor = c.focusFill,
             focusedContentColor = c.onFocusFill,
@@ -1257,6 +1356,22 @@ internal fun FittedText(
         overflow = if (selected) TextOverflow.Clip else TextOverflow.Ellipsis,
         modifier = if (selected) modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 600) else modifier,
     )
+}
+
+/** A Machine Room figure in a pill cell, with a slim bar under it when it's a share of something. */
+@Composable
+private fun StatCell(icon: ImageVector, label: String, value: String, fraction: Float? = null) {
+    val c = LocalLauncherColors.current
+    PillCellContent(icon, label, value, focused = false, extra = fraction?.let { f ->
+        {
+            Box(Modifier.padding(top = 2.dp).width(56.dp).height(3.dp).background(c.text.copy(alpha = 0.2f), BarShape)) {
+                Box(
+                    Modifier.fillMaxHeight().fillMaxWidth(f.coerceIn(0f, 1f))
+                        .background(if (f > 0.85f) Color(0xFFF5B14A) else c.text, BarShape),
+                )
+            }
+        }
+    })
 }
 
 @Composable
@@ -1307,16 +1422,18 @@ private fun Speed(icon: ImageVector, bytesPerSec: Long) {
     }
 }
 
-private fun gb(bytes: Long) = "%.1f GB".format(Locale.US, bytes / 1_073_741_824.0)
-private fun mb(bytes: Long) = "${bytes / 1_048_576} MB"
+internal fun gb(bytes: Long) = "%.1f GB".format(Locale.US, bytes / 1_073_741_824.0)
+/** The number only ("1.6"), for "1.6 / 2.0 GB". */
+internal fun gbShort(bytes: Long) = "%.1f".format(Locale.US, bytes / 1_073_741_824.0)
+internal fun mb(bytes: Long) = "${bytes / 1_048_576} MB"
 
-private fun speed(bps: Long): String = when {
+internal fun speed(bps: Long): String = when {
     bps >= 1_048_576 -> "%.1f MB/s".format(Locale.US, bps / 1_048_576.0)
     bps >= 1024 -> "${bps / 1024} KB/s"
     else -> "$bps B/s"
 }
 
-private fun duration(ms: Long): String {
+internal fun duration(ms: Long): String {
     val mins = ms / 60_000
     val h = mins / 60
     val d = h / 24

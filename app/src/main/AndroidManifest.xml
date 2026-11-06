@@ -89,6 +89,17 @@
                 android:resource="@xml/hew7_helper" />
         </service>
 
+        <!-- Now playing: reads media sessions and media notifications only. Granted by the setup script. -->
+        <service
+            android:name=".NowPlayingListener"
+            android:exported="false"
+            android:label="@string/now_playing_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".dream.WeatherDream"
             android:exported="true"

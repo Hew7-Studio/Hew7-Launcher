@@ -1,6 +1,6 @@
 # Hew7 Privacy Policy
 
-**Effective: 25 October 2026 · Hew7 Studio**
+**Effective: 6 November 2026 · Hew7 Studio**
 
 Hew7 is a launcher for Android TV and Google TV. This policy explains what Hew7
 does with information. In short: Hew7 has no accounts, ads, analytics or tracking, and Hew7
@@ -48,7 +48,24 @@ Hew7 explains what it does. It uses Android's Accessibility API only to:
   is in front, or app buttons from anywhere, so they open what you set.
 
 It reads only the TV's settings screens and power menu while carrying out these actions. It does
-not read the content of other apps, and it collects, stores and shares nothing.
+not read the content of other apps, and it collects, stores and shares nothing. While it carries
+out an action it turns the TV's system sounds off, so its presses don't click, and turns them back
+on when it's done.
+
+## Now playing (Notification access)
+
+Now playing is optional. The setup script gives Hew7 Notification access for it; you can switch it
+off in the TV's settings (Apps › Special app access › Notification access), and the Undo script
+takes it back. Hew7 uses it only to:
+
+- read media sessions: the title, artwork, progress and playing or paused state that apps such as
+  YouTube, Spotify or Netflix share with Android while you watch or listen;
+- read media notifications (the playback notification some apps show) for the same details.
+
+All other notifications are ignored. To show what each app last played after it closes, Hew7 keeps
+the last title, subtitle, progress and a small copy of the artwork per app on the TV, in its
+private storage, for up to 14 days. None of it is sent anywhere, and it's deleted when Hew7 is
+uninstalled. Hew7 also uses the usage access it already has to show when you last opened an app.
 
 ## Children
 

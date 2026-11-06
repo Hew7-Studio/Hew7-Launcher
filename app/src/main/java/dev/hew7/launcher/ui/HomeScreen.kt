@@ -10,6 +10,28 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Dehaze
+import androidx.compose.material.icons.rounded.Grain
+import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.Thunderstorm
+import androidx.compose.material.icons.rounded.WbCloudy
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.tv.material3.Border
+import dev.hew7.launcher.data.Sky
+import dev.hew7.launcher.data.skyOf
+import dev.hew7.launcher.data.temperature
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -113,6 +135,8 @@ fun HomeScreen(vm: HomeViewModel) {
     val dockAlpha by vm.dockAlpha.collectAsStateWithLifecycle()
     val showNames by vm.showAppNames.collectAsStateWithLifecycle()
     val showIntro by vm.showIntro.collectAsStateWithLifecycle()
+    val media by vm.media.collectAsStateWithLifecycle()
+    val lastUsed by vm.lastUsed.collectAsStateWithLifecycle()
 
     var appMenu by remember { mutableStateOf<AppEntry?>(null) }
     var panel by remember { mutableStateOf(Panel.NONE) }
@@ -234,6 +258,18 @@ fun HomeScreen(vm: HomeViewModel) {
         ink = WallpaperInk.measure(context, wallpaper?.url) ?: WallpaperInk.forTheme(dark)
     }
 
+    // Spotlight: the selected app; with nothing selected, whatever is playing or paused right now.
+    val nowMs = System.currentTimeMillis()
+    val selectedApp = apps.firstOrNull { it.pkg == selectedPkg }
+    val spotlight = when {
+        selectedApp != null -> spotlightFor(selectedApp, media[selectedApp.pkg], lastUsed[selectedApp.pkg], nowMs)
+        else -> media.values
+            .filter { it.live && it.title.isNotBlank() && apps.any { a -> a.pkg == it.pkg } }
+            .maxWithOrNull(compareBy({ it.playing }, { it.updatedAt }))
+            ?.let { m -> spotlightFor(apps.first { it.pkg == m.pkg }, m, lastUsed[m.pkg], nowMs) }
+    }
+    val showSpotlight = panel == Panel.NONE && spotlight != null
+
     LauncherTheme(dark, font) {
         val c = LocalLauncherColors.current
         Box(
@@ -264,35 +300,76 @@ fun HomeScreen(vm: HomeViewModel) {
             // Its own layer, so the dock animating above it doesn't redraw it.
             Box(Modifier.fillMaxSize().graphicsLayer()) { WallpaperLayer(wallpaper?.url) }
 
-            // While a side panel is open, everything reflows into the space to its left.
-            val panelSpace by animateDpAsState(
-                when (panel) {
-                    Panel.NONE -> 0.dp
-                    Panel.INPUTS -> PanelSpace
-                    // Machine Room's Running Apps page has a blade too; the dock keeps one size for both.
-                    Panel.SYSTEM, Panel.SETTINGS -> PanelSpace + BladeSpace
-                },
-                spring(dampingRatio = 0.85f, stiffness = 300f),
-                label = "panelSpace",
+            // The picture follows the day: warm around sunrise and sunset, dimmer and warmer at night.
+            val ambient by animateColorAsState(ambientTint(now, weather), tween(2_500), label = "ambient")
+            Box(Modifier.fillMaxSize().background(ambient))
+
+            // A soft glow in the selected app's colour, behind the Spotlight.
+            val glow by animateColorAsState(
+                if (showSpotlight) spotlight!!.accent.brighter().copy(alpha = if (c.dark) 0.5f else 0.28f) else Color.Transparent,
+                tween(700),
+                label = "glow",
             )
-            Column(
+            Box(
                 Modifier
                     .fillMaxSize()
-                    .padding(start = 40.dp, end = 40.dp + panelSpace, top = 24.dp, bottom = 20.dp),
-            ) {
-                TopBar(
+                    .drawWithCache {
+                        // A wide, soft oval behind Up next (as in the design: 900 × 520 at the left).
+                        val center = Offset(size.width * 0.23f, size.height * 0.56f)
+                        val r = size.width * 0.36f
+                        val brush = Brush.radialGradient(
+                            0f to glow, 0.45f to glow.copy(alpha = glow.alpha * 0.55f), 1f to Color.Transparent,
+                            center = center, radius = r,
+                        )
+                        onDrawBehind {
+                            scale(scaleX = 1f, scaleY = 0.58f, pivot = center) { drawCircle(brush, r, center) }
+                        }
+                    },
+            )
+
+            // Panels are a glass strip across the top now, so the home screen stays where it is
+            // beneath them (only the clock area is covered; Up next steps aside).
+            val panelSpace = 0.dp
+            // The layout follows the Hew7 2.0 design: clock top left, weather pill top right, Up next
+            // above a free-floating dock. The same at every time of day.
+            Box(Modifier.fillMaxSize().padding(end = panelSpace)) {
+                // A soft darkening (or lightening, for dark ink) behind the text, so its shadow can stay gentle.
+                TextScrim(ink)
+                // The panels' glass strip covers the top of the screen, so the clock steps out of
+                // its way rather than showing through or running underneath it.
+                val clockShown by animateFloatAsState(if (panel == Panel.NONE) 1f else 0f, tween(300), label = "clockShown")
+                ClockBlock(
                     now = now,
-                    weather = weather,
-                    unit = tempUnit,
-                    compact = panel != Panel.NONE,
                     greeting = greeting,
                     ink = ink,
-                    inputsFocus = inputsFocus,
+                    compact = false,
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 54.dp, top = 28.dp).graphicsLayer { alpha = clockShown },
+                )
+                TopRight(
+                    weather = weather,
+                    unit = tempUnit,
+                    now = now,
+                    ink = ink,
+                    hidden = panel != Panel.NONE,
+                    weatherFocus = inputsFocus,
                     onInputs = openInputs,
                     onSystem = { panel = Panel.SYSTEM },
                     onSettings = { settingsQuick = false; panel = Panel.SETTINGS },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 48.dp, top = 36.dp),
                 )
-                Spacer(Modifier.weight(1f))
+                Column(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp),
+                ) {
+                val spotAlpha by animateFloatAsState(if (showSpotlight) 1f else 0f, tween(450), label = "spotAlpha")
+                Spotlight(
+                    item = spotlight,
+                    ink = ink,
+                    modifier = Modifier.padding(start = 54.dp, bottom = 22.dp).graphicsLayer { alpha = spotAlpha },
+                )
+                Box {
                 AppSection(
                     apps = apps,
                     playStore = playStore,
@@ -310,6 +387,8 @@ fun HomeScreen(vm: HomeViewModel) {
                     onMoveDone = { movingPkg = null },
                     onSelected = { selectedPkg = it },
                 )
+                }
+                }
             }
 
             if (showIntro) {
@@ -321,11 +400,15 @@ fun HomeScreen(vm: HomeViewModel) {
         }
 
         val close = { panel = Panel.NONE; runningFirst = false }
-        when (panel) {
-            Panel.INPUTS -> InputsPanel(panelAlpha, onClose = close)
-            Panel.SYSTEM -> key(runningFirst) { MachineRoomPanel(vm, panelAlpha, startOnRunningApps = runningFirst, onClose = close) }
-            Panel.SETTINGS -> key(settingsQuick) { SettingsPanel(vm, panelAlpha, startOnQuick = settingsQuick, onClose = close) }
-            Panel.NONE -> Unit
+        // Panels are smoky glass with light letters in either theme, from the start (pages pick
+        // their colours before they're inside the glass).
+        CompositionLocalProvider(LocalLauncherColors provides panelColors(LocalLauncherColors.current)) {
+            when (panel) {
+                Panel.INPUTS -> InputsPanel(panelAlpha, onClose = close)
+                Panel.SYSTEM -> key(runningFirst) { GlassMachineRoomPanel(vm, panelAlpha, onClose = close) }
+                Panel.SETTINGS -> key(settingsQuick) { GlassSettingsPanel(vm, panelAlpha, startOnQuick = settingsQuick, onClose = close) }
+                Panel.NONE -> Unit
+            }
         }
 
         appMenu?.let { app ->
@@ -365,80 +448,223 @@ private fun WallpaperLayer(url: String?) {
     }
 }
 
-/** Clock, date, weather and greeting on the left; Inputs, System and Settings buttons on the right. */
+/**
+ * A wash over the wallpaper that follows the day: warm in the hour around sunrise and sunset,
+ * dimmer and a little warmer at night. Clear in the daytime.
+ */
+private fun ambientTint(now: LocalDateTime, weather: Weather?): Color {
+    val t = now.toLocalTime()
+    val near = { at: LocalDateTime? -> at != null && kotlin.math.abs(java.time.Duration.between(at.toLocalTime(), t).toMinutes()) <= 45 }
+    return when {
+        near(weather?.sunset) || near(weather?.sunrise) -> Color(0x26FF8A3D)
+        now.hour >= 23 || now.hour < 5 -> Color(0x59120A04)
+        weather?.isNightAt(t) ?: (now.hour < 7 || now.hour >= 19) -> Color(0x40000814)
+        else -> Color.Transparent
+    }
+}
+
+/**
+ * Soft shade behind the clock (top left) and Up next (bottom left): dark under light text, light
+ * under dark text. It lets the text's own shadow stay gentle instead of outlining every letter.
+ */
 @Composable
-private fun TopBar(
+private fun TextScrim(ink: WallpaperInk) {
+    val tone by animateColorAsState(if (ink.leftDark) Color.White.copy(alpha = 0.32f) else Color.Black.copy(alpha = 0.34f), tween(1_200), label = "scrim")
+    Box(
+        Modifier
+            .fillMaxSize()
+            .drawWithCache {
+                val top = Offset(size.width * 0.12f, size.height * 0.2f)
+                val bottom = Offset(size.width * 0.18f, size.height * 0.62f)
+                val r = size.width * 0.34f
+                val a = Brush.radialGradient(0f to tone, 0.55f to tone.copy(alpha = tone.alpha * 0.45f), 1f to Color.Transparent, center = top, radius = r)
+                val b = Brush.radialGradient(0f to tone, 0.55f to tone.copy(alpha = tone.alpha * 0.45f), 1f to Color.Transparent, center = bottom, radius = r)
+                onDrawBehind {
+                    scale(scaleX = 1f, scaleY = 0.62f, pivot = top) { drawCircle(a, r, top) }
+                    scale(scaleX = 1f, scaleY = 0.55f, pivot = bottom) { drawCircle(b, r, bottom) }
+                }
+            },
+    )
+}
+
+/** The clock, the date and the greeting: a thin Outfit clock over the date, with the greeting sliding up beneath. */
+@Composable
+private fun ClockBlock(
     now: LocalDateTime,
-    weather: Weather?,
-    unit: TempUnit,
-    compact: Boolean,
     greeting: GreetingLine,
     ink: WallpaperInk,
-    inputsFocus: FocusRequester,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val theme = LocalLauncherColors.current
+    // The clock block shrinks a little while a side panel needs the room.
+    val k by animateFloatAsState(if (compact) 0.8f else 1f, spring(dampingRatio = 0.75f, stiffness = 320f), label = "compact")
+    val is24h = DateFormat.is24HourFormat(LocalContext.current)
+    val time = now.format(DateTimeFormatter.ofPattern(if (is24h) "HH:mm" else "h:mm"))
+    val c = ink.colors(theme, left = true)
+    val darkInk = ink.leftDark
+    val clockSize = 78.sp * k
+
+    // Its own layer: the haloed text is costly to draw, so it's only redrawn when it changes.
+    Column(modifier.graphicsLayer()) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            InkText(
+                time, c.text, darkInk,
+                fontSize = clockSize, fontWeight = FontWeight.ExtraLight, lineHeight = clockSize,
+                fontFamily = DisplayFont, letterSpacing = (-1.5).sp,
+            )
+            if (!is24h) {
+                InkText(
+                    now.format(DateTimeFormatter.ofPattern("a")),
+                    c.subtext,
+                    darkInk,
+                    fontSize = 16.sp * k,
+                    fontFamily = DisplayFont,
+                    modifier = Modifier.padding(start = 6.dp, bottom = 10.dp * k),
+                )
+            }
+        }
+        InkText(
+            now.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
+            c.subtext, darkInk, fontSize = 13.sp * k,
+            modifier = Modifier.padding(top = 8.dp * k),
+        )
+        Spacer(Modifier.height(6.dp * k))
+        AnimatedGreeting(greeting, 21.sp * k, c.text, darkInk)
+    }
+}
+
+/**
+ * Top right: the glass weather pill, which opens to the next few hours when selected (Up from
+ * rest). Inputs, Machine Room and Settings sit to its left and show only while you're up here.
+ */
+@Composable
+private fun TopRight(
+    weather: Weather?,
+    unit: TempUnit,
+    now: LocalDateTime,
+    ink: WallpaperInk,
+    /** A side panel is open: the buttons fold away (they stay focusable so Back returns to them). */
+    hidden: Boolean,
+    weatherFocus: FocusRequester,
     onInputs: () -> Unit,
     onSystem: () -> Unit,
     onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val theme = LocalLauncherColors.current
-    val squeeze = spring<Float>(dampingRatio = 0.75f, stiffness = 320f)
-    // The clock block shrinks a little while a side panel needs the room.
-    val k by animateFloatAsState(if (compact) 0.82f else 1f, squeeze, label = "compact")
-    // The buttons fold away while a panel is open. They stay in the layout (just zero width and
-    // invisible) so the button you pressed keeps focus and Back returns to it.
-    val shown by animateFloatAsState(if (compact) 0f else 1f, squeeze, label = "buttons")
-    val is24h = DateFormat.is24HourFormat(LocalContext.current)
-    val time = now.format(DateTimeFormatter.ofPattern(if (is24h) "HH:mm" else "h:mm"))
-
-    // Its own layer: the haloed text is costly to draw, so it's only redrawn when it changes.
-    Row(Modifier.fillMaxWidth().graphicsLayer(), verticalAlignment = Alignment.Top) {
-        Column(Modifier.weight(1f)) {
-            val c = ink.colors(theme, left = true)
-            val darkInk = ink.leftDark
-            Row(verticalAlignment = Alignment.Bottom) {
-                InkText(time, c.text, darkInk, fontSize = 46.sp * k, fontWeight = FontWeight.Light, lineHeight = 50.sp * k)
-                if (!is24h) {
-                    InkText(
-                        now.format(DateTimeFormatter.ofPattern("a")),
-                        c.subtext,
-                        darkInk,
-                        fontSize = 15.sp * k,
-                        modifier = Modifier.padding(start = 5.dp, bottom = 8.dp * k),
-                    )
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                InkText(now.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")), c.subtext, darkInk, fontSize = 14.sp * k)
-                if (weather != null) {
-                    Text("   ${weather.emoji}  ", fontSize = 14.sp * k)
-                    InkText(weather.temperature(unit), c.text, darkInk, fontSize = 14.sp * k, fontWeight = FontWeight.Bold)
-                    InkText(
-                        "  ${weather.description}" + if (weather.city.isNotBlank()) " · ${weather.city}" else "",
-                        c.subtext,
-                        darkInk,
-                        fontSize = 14.sp * k,
-                    )
-                }
-            }
-            Spacer(Modifier.height(6.dp * k))
-            AnimatedGreeting(greeting, 19.sp * k, c.text, darkInk)
-        }
+    var inGroup by remember { mutableStateOf(false) }
+    val showButtons by animateFloatAsState(if (inGroup && !hidden) 1f else 0f, spring(dampingRatio = 0.75f, stiffness = 320f), label = "buttons")
+    val pillShown by animateFloatAsState(if (hidden) 0f else 1f, tween(300), label = "pill")
+    Row(
+        modifier.onFocusChanged { inGroup = it.hasFocus }.graphicsLayer { alpha = pillShown },
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
+                .padding(top = 6.dp)
                 // The spring overshoots slightly past 0 and 1, so clamp before using it as a size.
-                .graphicsLayer { alpha = shown.coerceIn(0f, 1f) }
+                .graphicsLayer { alpha = showButtons.coerceIn(0f, 1f) }
                 .layout { measurable, constraints ->
                     val p = measurable.measure(constraints)
-                    layout((p.width * shown.coerceIn(0f, 1f)).roundToInt(), p.height) { p.place(0, 0) }
+                    layout((p.width * showButtons.coerceIn(0f, 1f)).roundToInt(), p.height) { p.place(0, 0) }
                 },
         ) {
             CompositionLocalProvider(LocalLauncherColors provides ink.colors(theme, left = false)) {
-                CircleButton(Icons.Rounded.Input, "Inputs", ink.rightDark, onInputs, Modifier.focusRequester(inputsFocus))
+                CircleButton(Icons.Rounded.Input, "Inputs", ink.rightDark, onInputs)
                 CircleButton(Icons.Rounded.Memory, "Machine Room", ink.rightDark, onSystem)
                 CircleButton(Icons.Rounded.Settings, "Settings", ink.rightDark, onSettings)
             }
         }
+        WeatherPill(weather, unit, now, ink, Modifier.focusRequester(weatherFocus))
     }
+}
+
+/** The glass weather pill: temperature and sky; selected, it opens to the next 5 hours and tomorrow. */
+@Composable
+private fun WeatherPill(weather: Weather?, unit: TempUnit, now: LocalDateTime, ink: WallpaperInk, modifier: Modifier = Modifier) {
+    val theme = LocalLauncherColors.current
+    val c = ink.colors(theme, left = false)
+    var open by remember { mutableStateOf(false) }
+    // Smoky glass under light text, frosted glass under dark text.
+    val glass by animateColorAsState(if (ink.rightDark) Color(0x73FFFFFF) else Color(0x660A0E18), tween(900), label = "pillGlass")
+    Surface(
+        onClick = { open = !open },
+        modifier = modifier.onFocusChanged { open = it.isFocused }.animateContentSize(spring(dampingRatio = 0.85f, stiffness = 380f)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = glass,
+            contentColor = c.text,
+            focusedContainerColor = glass,
+            focusedContentColor = c.text,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)), shape = RoundedCornerShape(18.dp)),
+            focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(18.dp)),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+    ) {
+        Column(Modifier.padding(horizontal = 15.dp, vertical = 10.dp).width(if (open) 300.dp else 150.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(skyIcon(weather), contentDescription = null, modifier = Modifier.size(20.dp))
+                Text(
+                    weather?.temperature(unit) ?: "--°",
+                    fontFamily = DisplayFont, fontWeight = FontWeight.Light, fontSize = 22.sp,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                Text(weather?.description ?: "", fontSize = 11.sp, color = c.subtext, maxLines = 1)
+            }
+            if (open && weather != null) {
+                val hours = weather.hours.filter { it.time.isAfter(now.minusMinutes(30)) }.take(5)
+                if (hours.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 12.dp).background(Color.White.copy(alpha = 0.2f)).height(1.dp),
+                    ) {}
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        hours.forEachIndexed { i, h ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(if (i == 0) "Now" else h.time.format(DateTimeFormatter.ofPattern(if (DateFormat.is24HourFormat(LocalContext.current)) "HH:mm" else "h a")), fontSize = 10.sp, color = c.subtext)
+                                Icon(skyIcon(skyOf(h.code), night = h.time.hour < 7 || h.time.hour >= 19), contentDescription = null, modifier = Modifier.padding(top = 4.dp).size(16.dp))
+                                Text(temperature(h.tempC, unit), fontFamily = DisplayFont, fontSize = 15.sp, modifier = Modifier.padding(top = 2.dp))
+                            }
+                        }
+                    }
+                }
+                weather.tomorrow?.let { t ->
+                    Text(
+                        "Tomorrow: ${skyWords(skyOf(t.code))}, ${temperature(t.maxC, unit)} / ${temperature(t.minC, unit)}",
+                        fontSize = 10.sp, color = c.subtext, modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun skyIcon(weather: Weather?): ImageVector =
+    if (weather == null) Icons.Rounded.Cloud else skyIcon(weather.sky, night = !weather.isDay)
+
+internal fun skyIcon(sky: Sky, night: Boolean): ImageVector = when (sky) {
+    Sky.CLEAR -> if (night) Icons.Rounded.NightsStay else Icons.Rounded.WbSunny
+    Sky.PARTLY -> if (night) Icons.Rounded.NightsStay else Icons.Rounded.WbCloudy
+    Sky.CLOUDY -> Icons.Rounded.Cloud
+    Sky.FOG -> Icons.Rounded.Dehaze
+    Sky.RAIN -> Icons.Rounded.Grain
+    Sky.SNOW -> Icons.Rounded.AcUnit
+    Sky.STORM -> Icons.Rounded.Thunderstorm
+}
+
+private fun skyWords(sky: Sky): String = when (sky) {
+    Sky.CLEAR -> "sunny"
+    Sky.PARTLY -> "sunny spells"
+    Sky.CLOUDY -> "cloudy"
+    Sky.FOG -> "foggy"
+    Sky.RAIN -> "rain"
+    Sky.SNOW -> "snow"
+    Sky.STORM -> "thunderstorms"
 }
 
 /**
@@ -456,7 +682,7 @@ private fun AnimatedGreeting(greeting: GreetingLine, fontSize: TextUnit, color: 
         },
         label = "greeting",
     ) { line ->
-        InkText(line.text, color, darkInk, fontSize = fontSize, fontWeight = FontWeight.Bold)
+        InkText(line.text, color, darkInk, fontSize = fontSize, fontWeight = FontWeight.Light, fontFamily = DisplayFont)
     }
 }
 

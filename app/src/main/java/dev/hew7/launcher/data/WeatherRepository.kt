@@ -9,6 +9,27 @@ import kotlin.math.roundToInt
 
 enum class Sky { CLEAR, PARTLY, CLOUDY, FOG, RAIN, SNOW, STORM }
 
+/** Open-Meteo's weather code as a sky. */
+fun skyOf(code: Int): Sky = when (code) {
+    0, 1 -> Sky.CLEAR
+    2 -> Sky.PARTLY
+    3 -> Sky.CLOUDY
+    45, 48 -> Sky.FOG
+    in 51..67, in 80..82 -> Sky.RAIN
+    in 71..77, 85, 86 -> Sky.SNOW
+    in 95..99 -> Sky.STORM
+    else -> Sky.CLOUDY
+}
+
+data class HourCast(val time: LocalDateTime, val tempC: Double, val code: Int)
+
+data class DayCast(val code: Int, val maxC: Double, val minC: Double)
+
+fun temperature(c: Double, unit: TempUnit): String = when (unit) {
+    TempUnit.CELSIUS -> "${c.roundToInt()}°"
+    TempUnit.FAHRENHEIT -> "${(c * 9 / 5 + 32).roundToInt()}°"
+}
+
 data class Weather(
     val tempC: Double,
     val code: Int,
@@ -17,6 +38,9 @@ data class Weather(
     val sunset: LocalDateTime?,
     val city: String,
     val fetchedAt: Long,
+    /** The next few hours, for the weather pill. */
+    val hours: List<HourCast> = emptyList(),
+    val tomorrow: DayCast? = null,
 ) {
     val sky: Sky
         get() = when (code) {
@@ -68,6 +92,8 @@ data class Weather(
         .put("t", tempC).put("c", code).put("d", isDay)
         .put("sr", sunrise?.toString()).put("ss", sunset?.toString())
         .put("city", city).put("at", fetchedAt)
+        .put("h", org.json.JSONArray(hours.map { JSONObject().put("at", it.time.toString()).put("t", it.tempC).put("c", it.code) }))
+        .put("tm", tomorrow?.let { JSONObject().put("c", it.code).put("hi", it.maxC).put("lo", it.minC) })
         .toString()
 
     companion object {
@@ -81,6 +107,10 @@ data class Weather(
                 sunset = j.optString("ss").takeIf { it.isNotEmpty() && it != "null" }?.let(LocalDateTime::parse),
                 city = j.optString("city"),
                 fetchedAt = j.getLong("at"),
+                hours = j.optJSONArray("h")?.let { a ->
+                    (0 until a.length()).map { a.getJSONObject(it) }.map { HourCast(LocalDateTime.parse(it.getString("at")), it.getDouble("t"), it.getInt("c")) }
+                }.orEmpty(),
+                tomorrow = j.optJSONObject("tm")?.let { DayCast(it.getInt("c"), it.getDouble("hi"), it.getDouble("lo")) },
             )
         }.getOrNull()
     }
@@ -98,10 +128,21 @@ class WeatherRepository(private val prefs: Prefs) {
         runCatching {
             val place = place()
             val url = "https://api.open-meteo.com/v1/forecast?latitude=${place.lat}&longitude=${place.lon}" +
-                "&current=temperature_2m,weather_code,is_day&daily=sunrise,sunset&timezone=auto&forecast_days=1"
+                "&current=temperature_2m,weather_code,is_day&hourly=temperature_2m,weather_code" +
+                "&daily=sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=2"
             val j = JSONObject(httpGet(url))
             val current = j.getJSONObject("current")
             val daily = j.getJSONObject("daily")
+            val hourly = j.getJSONObject("hourly")
+            val times = hourly.getJSONArray("time")
+            val now = LocalDateTime.parse(current.getString("time"))
+            val hours = (0 until times.length())
+                .map { HourCast(LocalDateTime.parse(times.getString(it)), hourly.getJSONArray("temperature_2m").getDouble(it), hourly.getJSONArray("weather_code").getInt(it)) }
+                .filter { it.time.isAfter(now) }
+                .take(5)
+            val tomorrow = runCatching {
+                DayCast(daily.getJSONArray("weather_code").getInt(1), daily.getJSONArray("temperature_2m_max").getDouble(1), daily.getJSONArray("temperature_2m_min").getDouble(1))
+            }.getOrNull()
             Weather(
                 tempC = current.getDouble("temperature_2m"),
                 code = current.getInt("weather_code"),
@@ -110,6 +151,8 @@ class WeatherRepository(private val prefs: Prefs) {
                 sunset = LocalDateTime.parse(daily.getJSONArray("sunset").getString(0)),
                 city = place.city,
                 fetchedAt = System.currentTimeMillis(),
+                hours = hours,
+                tomorrow = tomorrow,
             ).also { prefs.cachedWeather = it.toJson() }
         }.getOrElse { cached() }
     }

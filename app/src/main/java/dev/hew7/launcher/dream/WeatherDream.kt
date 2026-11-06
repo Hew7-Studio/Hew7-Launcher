@@ -45,6 +45,12 @@ import dev.hew7.launcher.data.WallpaperRepository
 import dev.hew7.launcher.data.WeatherRepository
 import dev.hew7.launcher.ui.LauncherFont
 import dev.hew7.launcher.ui.SceneText
+import dev.hew7.launcher.ui.SceneCard
+import dev.hew7.launcher.ui.WallpaperInk
+import dev.hew7.launcher.ui.gradeBrightness
+import dev.hew7.launcher.data.NowPlaying
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.asImageBitmap
 import dev.hew7.launcher.ui.WeatherScene
 import dev.hew7.launcher.ui.gradeFor
 import dev.hew7.launcher.ui.moodFor
@@ -185,6 +191,29 @@ internal fun DreamScreen(onSleep: () -> Unit) {
     }
     val greetings = remember { GreetingScheduler(context) }
 
+    // Now playing: what's playing or paused, else what was played in the last few hours.
+    LaunchedEffect(Unit) { NowPlaying.start(context) }
+    val media by NowPlaying.media.collectAsState()
+    val card = remember(media, now.minute) {
+        val recent = System.currentTimeMillis() - 6 * 60 * 60 * 1000L
+        media.values
+            .filter { it.title.isNotBlank() && (it.live || it.updatedAt > recent) }
+            .maxWithOrNull(compareBy({ it.live }, { it.playing }, { it.updatedAt }))
+            ?.let { m ->
+                val label = runCatching {
+                    context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(m.pkg, 0)).toString()
+                }.getOrDefault("")
+                val kicker = when {
+                    m.live && m.playing -> "Playing on $label"
+                    m.live -> "Up next on $label"
+                    else -> "Last played on $label"
+                }
+                val leftMs = if (m.durationMs > 0) m.durationMs - m.positionNow() else 0L
+                val detail = listOf(m.subtitle, if (leftMs > 60_000) "${leftMs / 60_000} min left" else "").filter { it.isNotBlank() }.joinToString(" · ")
+                SceneCard(kicker, m.title, m.art?.asImageBitmap(), detail)
+            }
+    }
+
     val w = weather
     // Preview hook: `adb shell setprop debug.hew7.sky SNOW` (and debug.hew7.night true/false)
     // forces a weather animation. Only someone with ADB access can set debug.* properties.
@@ -202,6 +231,19 @@ internal fun DreamScreen(onSleep: () -> Unit) {
     // Weather Effects off: plain wallpaper and clock, no colour grade or animation.
     val effects = remember { prefs.weatherEffects }
     val grade = remember(mood, night, effects) { if (effects) ColorFilter.colorMatrix(gradeFor(mood, night)) else null }
+
+    // Letter colours follow the picture (as graded for the weather): dark where it's bright.
+    var bright by remember { mutableStateOf(listOf(0f, 0f)) }
+    LaunchedEffect(wallpaper) {
+        WallpaperInk.brightness(
+            context, wallpaper,
+            floatArrayOf(0.02f, 0.62f, 0.4f, 0.97f), // the clock, bottom left
+            floatArrayOf(0.7f, 0.03f, 0.98f, 0.97f), // the pill and box, on the right
+        )?.let { bright = it }
+    }
+    val k = (if (effects) gradeBrightness(mood, night) else 1f) * (if (calm) 0.65f else 1f)
+    val darkInk = bright[0] * k > WallpaperInk.BRIGHT
+    val darkPanels = bright[1] * k > WallpaperInk.BRIGHT
     val text = SceneText(
         // Same greeting as the home screen (it changes every 2 hours or on an event).
         greeting = greetings.line(now, w, prefs.tempUnit, prefs.greetingStyle).text,
@@ -210,6 +252,15 @@ internal fun DreamScreen(onSleep: () -> Unit) {
         weather = w?.let { it.temperature(prefs.tempUnit) + "  " + it.description + if (it.city.isNotBlank()) " · ${it.city}" else "" } ?: "",
         tvName = tvName,
         network = network,
+        card = card,
+        temp = w?.temperature(prefs.tempUnit).orEmpty(),
+        cond = w?.description.orEmpty(),
+        sky = debugSky ?: w?.sky,
+        skyNight = night,
+        // Late at night the text turns warm amber, as on the home screen's night look.
+        amber = now.hour >= 23 || now.hour < 5,
+        darkInk = darkInk,
+        darkPanels = darkPanels,
     )
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {

@@ -17,20 +17,29 @@ ads, no tracking.
 
 ## Features
 
-- **App dock** in the order you choose, with a 3D highlight, wrap-around, a hidden Play Store tile
-  (Left on the first app), reordering and an app menu (long-press or the remote's Menu button).
+- **Spotlight:** select an app and the screen follows it: a glow in the app's colour, its artwork,
+  and **Now playing** (what's playing or paused in it, with progress), or what it last played, or
+  when you last opened it.
+- **Follows the day:** the picture warms around sunrise and sunset and dims at night.
+- **App dock** in the order you choose, seven apps at a time with page dots: the selected app
+  lifts out in 3D, the highlight walks to the middle and the apps glide past it. A hidden Play Store
+  tile sits before the first app, plus reordering and an app menu (long-press or the remote's Menu
+  button).
 - **Wallpapers** that change every few minutes: Bing daily images or random photos, decoded at
   your screen's size.
 - **Readable on any picture:** text and buttons pick light or dark ink from the wallpaper behind
   them; light and dark theme switch at sunrise and sunset.
-- **Weather screensaver:** rain, snow, sun and stars over your wallpaper. Energy saving: **Calm
-  After** stops the animation (CPU drops from ~100% to almost nothing) and **Sleep After** puts the
-  TV in standby.
-- **Machine Room:** CPU, memory, storage and network, plus **Running Apps** to close apps.
-- **Hew7 Settings:** theme, font, greetings, app tiles and names, wallpapers, temperature,
-  transparency, screensaver, remote buttons.
+- **Weather screensaver:** a slowly drifting clock with a glass weather pill and a glass card
+  (Now playing, or the TV and network), in ink that follows the picture. Rain, snow, sun and stars
+  land on the text and glass. Energy saving: **Calm After** stops the animation (CPU drops from
+  ~100% to almost nothing) and **Sleep After** puts the TV in standby.
+- **Machine Room:** live CPU, memory, storage and network gauges, plus **Running Apps** to close
+  apps one at a time or all at once.
+- **Settings:** a compact glass panel with coloured categories (Appearance, Dock, Remote,
+  Screensaver, Quick Settings, About). Left and Right step through each setting's options one by
+  one, and each applies as you go.
 - **Quick Settings:** Display and Sound, Network, Bluetooth and Remotes, Accessibility, Apps,
-  All Settings, Accounts, and **Power** (Restart, Shut Down).
+  All Settings, Accounts, and **Power** (Sleep, Restart, Shut Down).
 - **Remote Buttons:** Hew7 reads each button's name from your TV, so any remote works. Set what
   Settings, Apps, Menu, colour and other buttons do; app buttons (Netflix, YouTube, Prime Video…)
   open their apps from anywhere.
@@ -64,9 +73,20 @@ An Accessibility service you switch on yourself, after Hew7 explains what it doe
 do things only the TV's own system can: close apps from Running Apps (by pressing Force Stop for
 you), open Display and Sound and Accounts directly, Restart and Shut Down, and make the remote's
 Settings, Input, Menu and app buttons work with Hew7. It reads only the TV's settings screens and
-power menu while doing these jobs, and collects nothing.
+power menu while doing these jobs, and collects nothing. While it works, it turns the TV's system
+sounds off so its presses don't click, and turns them back on when it's done.
 
-Android stops the Helper whenever Hew7 is updated; switch it off and on again afterwards.
+**After every update** (including from 1.0.x to 2.0), Android stops the Helper. Go to the TV's
+Settings › Accessibility › Hew7 Helper and switch it off and on again.
+
+## Now playing (optional)
+
+The setup script gives Hew7 Notification access so the Spotlight and the screensaver can show
+what's playing or paused in your apps. Hew7 reads only media sessions and media notifications,
+ignores every other notification, and keeps what each app last played on the TV for 14 days.
+Android doesn't let launchers read other apps' Continue watching lists, so an app that shares
+nothing shows when you last opened it instead. Switch it off in Settings › Apps › Special app
+access › Notification access.
 
 ## Build from source
 

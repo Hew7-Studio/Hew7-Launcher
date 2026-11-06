@@ -113,6 +113,21 @@ class Prefs(context: Context) {
         get() = sp.getFloat("dock_alpha", 0.3f)
         set(v) = sp.edit().putFloat("dock_alpha", v).apply()
 
+    /** Set once the dock has been switched to the Hew7 2.0 look (banners, no bar). */
+    var v2Look: Boolean
+        get() = sp.getBoolean("v2_look", false)
+        set(v) = sp.edit().putBoolean("v2_look", v).apply()
+
+    /** Set once the body font has been switched to Inter, Hew7 2.0's text font. */
+    var v2Font: Boolean
+        get() = sp.getBoolean("v2_font", false)
+        set(v) = sp.edit().putBoolean("v2_font", v).apply()
+
+    /** Set once Hew7 TV has been put at the front of the dock. */
+    var hew7TvPlaced: Boolean
+        get() = sp.getBoolean("hew7tv_placed", false)
+        set(v) = sp.edit().putBoolean("hew7tv_placed", v).apply()
+
     private fun putString(key: String, value: String?) = sp.edit().putString(key, value).apply()
 
     private inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =

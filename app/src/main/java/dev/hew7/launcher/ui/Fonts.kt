@@ -38,8 +38,17 @@ enum class LauncherFont(val label: String) {
     }
 
     companion object {
-        fun from(name: String?) = entries.firstOrNull { it.name == name } ?: NUNITO
+        fun from(name: String?) = entries.firstOrNull { it.name == name } ?: INTER
     }
+}
+
+/** Outfit, for the clock, greeting and headlines (Hew7 2.0's look), whatever body font is chosen. */
+val DisplayFont: FontFamily by lazy {
+    FontFamily(
+        listOf(FontWeight.ExtraLight, FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold).map { w ->
+            Font(R.font.outfit, w, variationSettings = FontVariation.Settings(FontVariation.weight(w.weight)))
+        },
+    )
 }
 
 /** One variable-weight font file exposed at the weights the launcher uses. */

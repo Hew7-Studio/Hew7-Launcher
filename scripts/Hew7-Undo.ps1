@@ -54,6 +54,7 @@ if (-not $Uninstall) {
     Tv "appops set $Hew7 GET_USAGE_STATS default" | Out-Null
     Tv "appops set $Hew7 WRITE_SETTINGS default" | Out-Null
     Tv "pm revoke $Hew7 android.permission.ACCESS_FINE_LOCATION" | Out-Null
+    Tv "cmd notification disallow_listener $Hew7/$Hew7.NowPlayingListener" | Out-Null
 }
 
 # 4. Uninstall.

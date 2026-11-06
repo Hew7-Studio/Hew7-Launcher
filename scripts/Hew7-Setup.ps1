@@ -8,7 +8,7 @@ What it does (everything can be undone with Hew7-Undo.ps1):
   1. Installs Hew7 from the APK in this folder (the newest Hew7.Launcher-<version>.apk, or
      Hew7.apk) if it isn't installed yet. -Reinstall installs it again; -Apk picks a file.
   2. Gives Hew7 the permissions only ADB can give: memory and usage access (Running Apps),
-     the screensaver timer, and location (Wi-Fi name).
+     the screensaver timer, location (Wi-Fi name), and Notification access (Now playing).
   3. Makes Hew7 the screensaver.
   4. Turns off Google TV's own home screen so the Home button opens Hew7.
   5. Opens the TV's Accessibility settings: switch on "Hew7 Helper" there yourself
@@ -74,6 +74,8 @@ Tv "pm grant $Hew7 android.permission.PACKAGE_USAGE_STATS" | Out-Null
 Tv "appops set $Hew7 GET_USAGE_STATS allow" | Out-Null
 Tv "appops set $Hew7 WRITE_SETTINGS allow" | Out-Null
 Tv "pm grant $Hew7 android.permission.ACCESS_FINE_LOCATION" | Out-Null
+# Now playing: Notification access, used only to read what's playing or paused in each app.
+Tv "cmd notification allow_listener $Hew7/$Hew7.NowPlayingListener" | Out-Null
 
 # 4. Screensaver.
 Step "Making Hew7 Weather the screensaver"
