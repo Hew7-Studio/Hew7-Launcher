@@ -269,6 +269,8 @@ class CloseHelperService : AccessibilityService() {
             Stage.CONFIRM -> {
                 val ok = find(root, listOf("OK")) ?: return
                 if (click(ok)) {
+                    // Otherwise the 4 s skip can still fire before next() below and skip an app.
+                    handler.removeCallbacks(skip)
                     closed += pkg
                     current = null
                     handler.postDelayed({ next() }, 400)

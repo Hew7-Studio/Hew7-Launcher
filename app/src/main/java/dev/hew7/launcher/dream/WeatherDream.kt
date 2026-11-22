@@ -93,13 +93,18 @@ class WeatherDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onDreamingStarted() {
         super.onDreamingStarted()
+        if (!lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.CREATED)) return
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
     }
 
     override fun onDreamingStopped() {
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        // On TCL TVs this can arrive after onDetachedFromWindow already destroyed the lifecycle;
+        // moving a DESTROYED lifecycle throws and crashed Hew7 on wake.
+        if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        }
         super.onDreamingStopped()
     }
 
