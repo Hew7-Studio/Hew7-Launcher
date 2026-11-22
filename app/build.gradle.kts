@@ -21,8 +21,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Every Play upload needs a higher versionCode; versionName is what people see.
-        versionCode = 3
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "2.0.1"
     }
 
     signingConfigs {

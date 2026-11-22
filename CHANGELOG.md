@@ -1,5 +1,20 @@
 # Hew7 changelog
 
+## 2.0.1 — 22 November 2026 (security and stability fixes)
+
+**Screensaver:** waking the TV from the screensaver no longer crashes it on some TVs.
+
+**Closing several apps:** Hew7 Helper no longer skips an app when closing them one after another.
+
+**Safer downloads:** wallpaper links are accepted only from Bing's own image paths (otherwise
+Picsum is used), and every reply Hew7 downloads is limited to 1 MB.
+
+**Build:** the Gradle download is checked against its published SHA-256, and the first unit test
+was added.
+
+**Updating:** install over 2.0.0, then switch Hew7 Helper off and on again in the TV's
+Settings › Accessibility.
+
 ## 2.0.0 — 6 November 2026 (new design)
 
 **Updating from 1.0.x:** Android stops Hew7 Helper when Hew7 is updated. Afterwards, go to the
