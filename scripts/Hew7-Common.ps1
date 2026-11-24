@@ -1,7 +1,8 @@
 # Shared by Hew7-Setup.ps1 and Hew7-Undo.ps1. Not meant to be run on its own.
 
 $Hew7 = "dev.hew7.launcher"
-$GoogleHome = @("com.google.android.apps.tv.launcherx", "com.google.android.tungsten.setupwraith")
+# Google TV's home screen and its setup, and the older Android TV home screen (Sony, Philips, Nvidia...).
+$GoogleHome = @("com.google.android.apps.tv.launcherx", "com.google.android.tungsten.setupwraith", "com.google.android.tvlauncher")
 
 function Find-Adb {
     $cmd = Get-Command adb -ErrorAction SilentlyContinue

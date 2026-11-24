@@ -87,6 +87,28 @@ class CloseHelperService : AccessibilityService() {
      */
     override fun onKeyEvent(event: KeyEvent): Boolean = RemoteKeys.onKey(event)
 
+    // ---------- the TV's own words, in its language ----------
+
+    // Hew7 Helper finds buttons by their text. Reading that text from the TV's own Settings app
+    // and from Android means it works in any language; the English words stay as a backup for
+    // TVs whose makers word things differently.
+    private var forceStopWords = listOf("Force stop")
+    private var okWords = listOf("OK")
+
+    /** A text from the TV's Settings app, in the TV's language, or null if it has none by that name. */
+    private fun settingsText(name: String): String? = runCatching {
+        val r = packageManager.getResourcesForApplication(SETTINGS_PKG)
+        r.getIdentifier(name, "string", SETTINGS_PKG).takeIf { it != 0 }?.let(r::getString)
+    }.getOrNull()
+
+    /** A text from Android itself (including the power menu's), in the TV's language, or null. */
+    private fun androidText(name: String): String? = runCatching {
+        val r = android.content.res.Resources.getSystem()
+        r.getIdentifier(name, "string", "android").takeIf { it != 0 }?.let(r::getString)
+    }.getOrNull()
+
+    private fun words(own: List<String?>, english: List<String>) = (own.filterNotNull() + english).filter { it.isNotBlank() }.distinct()
+
     /** Force-stops these apps one by one behind the cover, then shows Running Apps again. */
     fun close(packages: List<String>, at: Anchor? = null) {
         anchor = at
@@ -94,12 +116,20 @@ class CloseHelperService : AccessibilityService() {
         queue.addAll(packages)
         closed.clear()
         total = packages.size
+        forceStopWords = words(listOf(settingsText("device_apps_app_management_force_stop")), listOf("Force stop"))
+        okWords = words(listOf(settingsText("okay"), getString(android.R.string.ok)), listOf("OK"))
         showCover(showProgress = true) { next() }
     }
 
     /** Opens the main settings list and selects the row with one of these labels. */
     fun openSettingsEntry(labels: List<String>, at: Anchor? = null) {
-        entryLabels = labels
+        // The row's name in the TV's own language, then the English names given.
+        val own = when {
+            labels.any { it.startsWith("Display") } -> listOf(settingsText("device_display_sound"), settingsText("display_and_sound_category_title"))
+            labels.any { it.startsWith("Accounts") } -> listOf(settingsText("accounts_category_title"), settingsText("tcl_accounts_category_title"))
+            else -> emptyList()
+        }
+        entryLabels = words(own, labels)
         entryPending = false
         anchor = at
         showCover(showProgress = at != null) {
@@ -153,8 +183,8 @@ class CloseHelperService : AccessibilityService() {
             coverText?.text = "Restarting…"
             performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
             pressThrough(
-                first = listOf("Restart", "Reboot"),
-                confirm = listOf("OK", "Restart", "Reboot"),
+                first = words(listOf(androidText("global_action_restart")), listOf("Restart", "Reboot")),
+                confirm = words(listOf(getString(android.R.string.ok), androidText("global_action_restart")), listOf("OK", "Restart", "Reboot")),
                 scroll = false,
                 failMessage = "This TV's power menu has no Restart option Hew7 can press",
             )
@@ -168,8 +198,8 @@ class CloseHelperService : AccessibilityService() {
             coverText?.text = "Shutting down…"
             performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
             pressThrough(
-                first = listOf("Power off", "Shut down", "Turn off", "Power Off", "Shut Down"),
-                confirm = listOf("OK", "Power off", "Shut down", "Turn off"),
+                first = words(listOf(androidText("global_action_power_off"), androidText("power_off")), listOf("Power off", "Shut down", "Turn off")),
+                confirm = words(listOf(getString(android.R.string.ok), androidText("global_action_power_off")), listOf("OK", "Power off", "Shut down", "Turn off")),
                 scroll = false,
                 failMessage = "This TV's power menu has no Shut Down option Hew7 can press",
             )
@@ -258,7 +288,7 @@ class CloseHelperService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         when (stage) {
             Stage.FORCE_STOP -> {
-                val node = find(root, listOf("Force stop")) ?: return
+                val node = find(root, forceStopWords) ?: return
                 if (!node.isEnabled) {
                     next() // not running any more
                     return
@@ -266,7 +296,7 @@ class CloseHelperService : AccessibilityService() {
                 if (click(node)) stage = Stage.CONFIRM
             }
             Stage.CONFIRM -> {
-                val ok = find(root, listOf("OK")) ?: return
+                val ok = find(root, okWords) ?: return
                 if (click(ok)) {
                     // Otherwise the 4 s skip can still fire before next() below and skip an app.
                     handler.removeCallbacks(skip)

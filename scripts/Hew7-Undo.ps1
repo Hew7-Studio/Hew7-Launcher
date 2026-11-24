@@ -34,6 +34,11 @@ foreach ($p in $GoogleHome) {
     if ($backup -and ($backup.googleHomeDisabled -contains $p)) { Write-Host "  ($p was already off before Setup; leaving it off)"; continue }
     Tv "pm enable $p" | Out-Null
 }
+# The TV's own home screen chosen again (any maker's), if Setup saved which it was.
+if ($backup -and $backup.homeActivity -match '/' -and $backup.homeActivity -notmatch [regex]::Escape($Hew7)) {
+    Step "Choosing the TV's own home screen again"
+    try { Tv "cmd package set-home-activity $($backup.homeActivity)" | Out-Null } catch { }
+}
 
 # 2. Screensaver and timer.
 if ($backup) {

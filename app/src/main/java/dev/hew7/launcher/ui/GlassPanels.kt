@@ -241,7 +241,9 @@ private fun GlassPanel(
                                 }
                             }
                             Box(Modifier.padding(top = 8.dp, bottom = 9.dp).fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.2f)))
-                            content()
+                            // Never taller than the space above the dock; extra lines (like a Hew7
+                            // Helper notice) scroll instead of covering the apps.
+                            Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) { content() }
                         }
                     }
                 }

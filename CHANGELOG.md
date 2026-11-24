@@ -14,6 +14,25 @@ keeps running, not only when it starts.
 
 **Security policy:** says that Hew7 Helper sees each remote button press (never stored or sent).
 
+**Works in any language:** Hew7 Helper finds Force stop, OK, Restart, Power off, Display & sound
+and Accounts by reading their names from the TV itself, in the TV's language, instead of looking
+only for the English words (still used as a backup).
+
+**Any Android TV's home screen:** the setup script now asks Android to make Hew7 the home screen,
+which works whoever made the TV, and remembers the TV's own home screen so the undo script can
+choose it again. Google TV's home screen is still switched off as before, and so is the older
+Android TV home screen (Sony, Philips, Nvidia and others), which otherwise took Home back.
+
+**Remote works straight after an update:** Hew7 sometimes started with nothing selected, so the
+remote did nothing until Home was pressed. It now keeps trying for longer while the screen gets
+ready.
+
+**Panels stay above the dock:** with a Hew7 Helper notice showing, the Machine Room could cover
+the apps; panels now scroll instead.
+
+**Tested on Android TV 12, 13 and 14** (Google's emulators), including Hew7 Helper with the TV
+set to German, as well as on a TCL Google TV (Android 11).
+
 **Hew7 Helper comes back after updates:** on TCL TVs it stopped after every update because TCL
 blocks apps from starting in the background. The setup script now allows Hew7's auto-start (the
 undo script blocks it again), so Android brings the Helper back by itself.

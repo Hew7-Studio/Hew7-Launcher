@@ -166,7 +166,9 @@ fun HomeScreen(vm: HomeViewModel) {
             dockFocus = DockFocus(back, ++dockFocusId)
             return@LaunchedEffect
         }
-        repeat(20) {
+        // Up to 10 s: after an update or a cold start the screen (and the intro) can take longer
+        // than a second to be ready, and without this focus the remote does nothing until Home.
+        repeat(200) {
             runCatching { restFocus.requestFocus() }
             if (resting) return@LaunchedEffect
             delay(50)

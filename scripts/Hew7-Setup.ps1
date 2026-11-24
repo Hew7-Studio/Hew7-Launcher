@@ -53,6 +53,8 @@ if (-not (Test-Path $BackupFile)) {
         screenOffTimeout    = (& $script:Adb -s $script:Target shell settings get system screen_off_timeout).Trim()
         screensaver         = (& $script:Adb -s $script:Target shell settings get secure screensaver_components).Trim()
         googleHomeDisabled  = @($GoogleHome | Where-Object { (& $script:Adb -s $script:Target shell pm list packages -d $_) -match [regex]::Escape($_) })
+        # The home screen the TV used before Hew7 (any maker's), so Undo can choose it again.
+        homeActivity        = "$((& $script:Adb -s $script:Target shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME) | Select-Object -Last 1)".Trim()
     }
     if ($DryRun) { Step "[dry run] would save current settings to $BackupFile" }
     else { $backup | ConvertTo-Json | Set-Content -Encoding UTF8 $BackupFile; Step "Saved the TV's current settings to $(Split-Path $BackupFile -Leaf)" }
@@ -89,6 +91,10 @@ Tv "settings put secure screensaver_components $Hew7/$Hew7.dream.WeatherDream" |
 Tv "settings put secure screensaver_enabled 1" | Out-Null
 
 # 5. Home screen.
+Step "Making Hew7 the home screen"
+# Works on any Android TV (Android 7 and later), whoever made it.
+try { Tv "cmd package set-home-activity $Hew7/.MainActivity" | Out-Null } catch { }
+# Google TV's own home screen takes Home back unless it's switched off.
 Step "Turning off Google TV's home screen so Home opens Hew7"
 foreach ($p in $GoogleHome) {
     if ((& $script:Adb -s $script:Target shell pm list packages $p) -match [regex]::Escape($p)) { Tv "pm disable-user --user 0 $p" | Out-Null }
