@@ -771,7 +771,10 @@ fun GlassMachineRoomPanel(vm: HomeViewModel, alpha: Float, onClose: () -> Unit) 
     }
     LaunchedEffect(apps) {
         while (true) {
-            running = RunningApps.read(context, apps)
+            // Keep each app where it was: re-sorting by memory moved a different app under the
+            // highlight between refreshes, so OK closed the wrong app. New apps go at the end.
+            val shown = running?.map { it.app.pkg }.orEmpty()
+            running = RunningApps.read(context, apps)?.sortedBy { shown.indexOf(it.app.pkg).let { i -> if (i < 0) Int.MAX_VALUE else i } }
             delay(5_000)
         }
     }

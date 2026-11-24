@@ -35,9 +35,9 @@ So you can judge the risks, this is everything Hew7 is allowed to do:
 | Permission or access | Given by | Used for |
 |---|---|---|
 | Internet | installing | weather (approximate location from your internet address, Open-Meteo) and wallpapers (Bing or Picsum), over HTTPS only |
-| Memory, usage access, write system settings, location | the setup script, over ADB | Running Apps, last-opened times, the screensaver timer, the Wi-Fi name |
+| Memory, usage access, write system settings, location, auto-start (TCL TVs) | the setup script, over ADB | Running Apps, last-opened times, the screensaver timer, the Wi-Fi name; auto-start lets Android bring Hew7 Helper back after updates |
 | Notification access (optional) | the setup script, over ADB | Now playing: reads only media sessions and media notifications |
-| Accessibility: Hew7 Helper (optional) | you, on the TV | presses buttons on the TV's own settings and power screens; turns the system sounds off while it works |
+| Accessibility: Hew7 Helper (optional) | you, on the TV | presses buttons on the TV's own settings and power screens; turns the system sounds off while it works; sees each remote button press first, so the Settings, Input, Menu and app buttons can do their Hew7 jobs (presses are never stored or sent anywhere; inside other apps only the app buttons are used) |
 
 Hew7 doesn't open any network ports, has no server or account, collects no analytics, and
 doesn't load code from the internet. Its background services (Hew7 Helper, Now playing and the

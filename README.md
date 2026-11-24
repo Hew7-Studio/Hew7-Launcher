@@ -81,8 +81,10 @@ Settings, Input, Menu and app buttons work with Hew7. It reads only the TV's set
 power menu while doing these jobs, and collects nothing. While it works, it turns the TV's system
 sounds off so its presses don't click, and turns them back on when it's done.
 
-**After every update** (including from 1.0.x to 2.0), Android stops the Helper. Go to the TV's
-Settings › Accessibility › Hew7 Helper and switch it off and on again.
+**After an update** the Helper comes back by itself on TCL TVs set up with the latest setup
+script (it allows Hew7's auto-start, which TCL blocks by default). On other TVs, or if a Helper
+notice appears, open Hew7 first, then go to the TV's Settings › Accessibility › Hew7 Helper and
+switch it off and on again. Running the setup script again also fixes it.
 
 ## Now playing (optional)
 

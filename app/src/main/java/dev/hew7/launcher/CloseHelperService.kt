@@ -120,11 +120,10 @@ class CloseHelperService : AccessibilityService() {
         current = pkg
         if (pkg == null) {
             // Done: back to Hew7's Running Apps list, which plays the closed rows away.
+            MainActivity.closedByHelper = ArrayList(closed)
             startActivity(
                 Intent(this, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                    .putExtra(MainActivity.EXTRA_OPEN_RUNNING_APPS, true)
-                    .putStringArrayListExtra(MainActivity.EXTRA_CLOSED_APPS, ArrayList(closed)),
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
             )
             // Give Hew7 a moment to draw before lifting the cover.
             handler.postDelayed({ removeCover() }, 900)

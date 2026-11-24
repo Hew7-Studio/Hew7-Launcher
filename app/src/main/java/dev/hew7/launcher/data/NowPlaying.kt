@@ -77,6 +77,8 @@ object NowPlaying {
         if (app == null) {
             app = ctx
             load(ctx)
+        } else {
+            prune(ctx)
         }
         if (sessions == null && allowed(ctx)) {
             val msm = ctx.getSystemService(MediaSessionManager::class.java) ?: return@ui
@@ -259,6 +261,19 @@ object NowPlaying {
                 positionMs = j.optLong("p"), positionAt = updated, speed = 1f, durationMs = j.optLong("d"), updatedAt = updated)
         }
         _media.value = out + _media.value
+    }
+
+    /**
+     * Forgets what apps played more than [KEEP_DAYS] ago, also while Hew7 keeps running for weeks
+     * (load() only checks at start-up). Whatever is playing now is kept.
+     */
+    private fun prune(ctx: Context) {
+        val cutoff = System.currentTimeMillis() - KEEP_DAYS * 24 * 60 * 60 * 1000L
+        val old = _media.value.values.filter { !it.live && it.updatedAt < cutoff }.map { it.pkg }
+        if (old.isEmpty()) return
+        _media.value = _media.value - old.toSet()
+        prefs(ctx).edit().apply { old.forEach { remove(it) } }.apply()
+        old.forEach { artFile(ctx, it).delete() }
     }
 
     private fun Bitmap.shrunk(): Bitmap {

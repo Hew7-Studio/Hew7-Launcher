@@ -97,16 +97,20 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME)) vm.onHomePressed()
-        if (intent.getBooleanExtra(EXTRA_OPEN_RUNNING_APPS, false)) {
+        closedByHelper?.let { closed ->
+            closedByHelper = null
             vm.clearReturnTo()
-            vm.justClosed.value = intent.getStringArrayListExtra(EXTRA_CLOSED_APPS).orEmpty().toSet()
+            vm.justClosed.value = closed.toSet()
             vm.openRunningApps.value = true
         }
     }
 
     companion object {
-        const val EXTRA_OPEN_RUNNING_APPS = "dev.hew7.launcher.OPEN_RUNNING_APPS"
-        const val EXTRA_CLOSED_APPS = "dev.hew7.launcher.CLOSED_APPS"
+        /**
+         * Set by Hew7 Helper (same process) just before it brings Hew7 back after closing apps.
+         * Passed in memory, not as intent extras, which any app could send to this exported screen.
+         */
+        @Volatile var closedByHelper: List<String>? = null
     }
 
     override fun onDestroy() {

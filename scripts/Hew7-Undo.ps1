@@ -53,6 +53,7 @@ if (-not $Uninstall) {
     Tv "pm revoke $Hew7 android.permission.PACKAGE_USAGE_STATS" | Out-Null
     Tv "appops set $Hew7 GET_USAGE_STATS default" | Out-Null
     Tv "appops set $Hew7 WRITE_SETTINGS default" | Out-Null
+    try { Tv "appops set $Hew7 APP_AUTO_START default" | Out-Null } catch { }  # not on every TV
     Tv "pm revoke $Hew7 android.permission.ACCESS_FINE_LOCATION" | Out-Null
     Tv "cmd notification disallow_listener $Hew7/$Hew7.NowPlayingListener" | Out-Null
 }

@@ -1,5 +1,27 @@
 # Hew7 changelog
 
+## 2.0.2 — 24 November 2026 (security hardening)
+
+**Running Apps closed the wrong app:** the list re-sorted itself by memory every few seconds, so
+an app using about the same memory could slide under the highlight just before OK and be closed
+instead. Apps now keep their places while the Machine Room is open.
+
+**Running Apps:** only Hew7 Helper can now bring back Running Apps after closing apps; other apps
+on the TV can no longer open it with a fake list of closed apps.
+
+**Now playing history:** what apps played more than 14 days ago is now also deleted while Hew7
+keeps running, not only when it starts.
+
+**Security policy:** says that Hew7 Helper sees each remote button press (never stored or sent).
+
+**Hew7 Helper comes back after updates:** on TCL TVs it stopped after every update because TCL
+blocks apps from starting in the background. The setup script now allows Hew7's auto-start (the
+undo script blocks it again), so Android brings the Helper back by itself.
+
+**Updating:** install over 2.0.1, then run the setup script once more so it allows auto-start.
+Until then, if a Helper notice appears, open Hew7, then switch Hew7 Helper off and on in the TV's
+Settings › Accessibility.
+
 ## 2.0.1 — 22 November 2026 (security and stability fixes)
 
 **Screensaver:** waking the TV from the screensaver no longer crashes it on some TVs.
